@@ -1,0 +1,16 @@
+{
+	"scripts": {
+		"build": "esbuild src/main.ts --bundle --outfile=dist/main.js --platform=node",
+		"eval": "ts-node src/main.ts"
+	},
+	"devDependencies": {
+		"@types/node": "^22.9.0",
+		"esbuild": "^0.24.0",
+		"ts-node": "^10.9.2",
+		"typescript": "^5.6.3"
+	},
+	"dependencies": {
+		"@why-ts/cli": "^0.4.1",
+		"ts-pattern": "^5.5.0"
+	}
+}
