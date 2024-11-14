@@ -2,20 +2,25 @@ import { HandlerInput } from "@why-ts/cli";
 import { match, P } from "ts-pattern";
 
 export const DEFAULT_REGISTRY = "https://hub.docker.com";
-export const DEFAULT_FORMAT = "json" as const;
 
 type Args = {
 	repository: string;
 	registry?: string;
-	format?: "json" | "csv";
 };
 
 export default async function ({
-	args: { repository, registry = DEFAULT_REGISTRY, format = DEFAULT_FORMAT },
+	args: { repository, registry },
 	logger,
 }: HandlerInput<Args>) {
 	logger.error(`Listing tags for "${repository}"...`);
+	const tags = await listDockerTags({ repository, registry });
+	logger.log(JSON.stringify(tags));
+}
 
+export async function listDockerTags({
+	repository,
+	registry = DEFAULT_REGISTRY,
+}: Omit<Args, "format">) {
 	const repo = match(repository.split("/"))
 		.with([P.string], ([name]) => ["library", name])
 		.with([P.string, P.string], (v) => v)
@@ -23,14 +28,19 @@ export default async function ({
 			throw new Error("Invalid repository format");
 		});
 
-	const res = await queryDockerApi<{ name: string }>(
+	const res = await queryDockerApi<{ name: string; last_updated: string }>(
 		new URL(
 			`/v2/namespaces/${repo[0]}/repositories/${repo[1]}/tags?page_size=100`,
 			registry
 		)
 	);
 
-	logger.log(getFormatter(format)(res.map((tag) => tag.name)));
+	console.log(res);
+
+	return res.map((tag) => ({
+		name: tag.name,
+		lastUpdated: new Date(tag.last_updated),
+	}));
 }
 
 function getFormatter(format: "json" | "csv") {

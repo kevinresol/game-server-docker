@@ -8,9 +8,15 @@ dependencies:
   '@why-ts/cli':
     specifier: ^0.4.1
     version: 0.4.1
+  '@why-ts/core':
+    specifier: ^0.2.1
+    version: 0.2.1
   ts-pattern:
     specifier: ^5.5.0
     version: 5.5.0
+  zod:
+    specifier: ^3.23.8
+    version: 3.23.8
 
 devDependencies:
   '@types/node':
@@ -300,6 +306,12 @@ packages:
       ts-pattern: 5.5.0
       tslib: 2.8.1
       type-fest: 4.26.1
+    dev: false
+
+  /@why-ts/core@0.2.1:
+    resolution: {integrity: sha512-vqH4ZSXFxpj0lRVG2IPNECVPSP4HG0q5wqnRtiOJuYH15+gYHvGkowHj1l+KegXX6W3NjwurdFToIWGZD32rMg==}
+    dependencies:
+      tslib: 2.8.1
     dev: false
 
   /acorn-walk@8.3.4:
@@ -670,3 +682,7 @@ packages:
     resolution: {integrity: sha512-Ux4ygGWsu2c7isFWe8Yu1YluJmqVhxqK2cLXNQA5AcC3QfbGNpM7fu0Y8b/z16pXLnFxZYvWhd3fhBY9DLmC6Q==}
     engines: {node: '>=6'}
     dev: true
+
+  /zod@3.23.8:
+    resolution: {integrity: sha512-XBx9AXhXktjUqnepgTiE5flcKIYWi/rme0Eaj+5Y0lftuGBq+jyRu/md4WnuxqgP1ubdpNCsYEYPxrzVHD8d6g==}
+    dev: false
