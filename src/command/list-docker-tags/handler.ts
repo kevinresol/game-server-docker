@@ -52,7 +52,6 @@ async function queryDockerApi<T>(url: URL): Promise<QueryResult<T[]>> {
 	const results: T[] = [];
 
 	while (true) {
-		console.error(`Querying ${url}...`);
 		const res = await fetch(url);
 
 		if (res.status !== 200) {

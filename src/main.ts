@@ -13,5 +13,10 @@ import getSteamBuildIdCommand from "./command/get-steam-build-id/command";
 		.command("build-game-tool", buildGameToolCommand)
 		.command("eval-game-tool", evalGameToolCommand)
 		.run(process.argv.slice(2))
-		.catch(() => process.exit(1));
+		.catch((e) => {
+			console.error(e);
+			process.exit(1);
+		});
+
+	console.log(output);
 })();
