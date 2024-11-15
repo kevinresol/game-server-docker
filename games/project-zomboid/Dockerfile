@@ -19,8 +19,8 @@ RUN apt-get install -y nodejs \
 # install game as steam user
 USER steam
 RUN ./steamcmd.sh \
-	+login anonymous \
 	+force_install_dir ${GAME_BIN_PATH} \
+	+login anonymous \
 	+app_update 380870 -beta ${BRANCH} validate \
 	+logoff +quit
 COPY --chown=steam:steam dist/tool.js /home/steam/tool.js
