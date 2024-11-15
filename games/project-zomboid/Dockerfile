@@ -5,7 +5,7 @@ ARG BRANCH=public
 ENV SERVER_NAME="myzomboidserver"
 
 # internal vars
-ENV GAME_BIN_PATH="/home/steam/Steam/steamapps/common/Project Zomboid Dedicated Server"
+ENV GAME_BIN_PATH="/home/steam/Steam/steamapps/common/ProjectZomboidDedicatedServer"
 ENV GAME_DATA_PATH="/home/steam/Zomboid"
 ENV NVM_DIR="/home/steam/.nvm"
 
@@ -18,7 +18,11 @@ RUN apt-get install -y nodejs \
 
 # install game as steam user
 USER steam
-RUN ./steamcmd.sh +login anonymous +app_update 380870 -beta ${BRANCH} validate +logoff +quit
+RUN ./steamcmd.sh \
+	+login anonymous \
+	+force_install_dir ${GAME_BIN_PATH} \
+	+app_update 380870 -beta ${BRANCH} validate \
+	+logoff +quit
 COPY --chown=steam:steam dist/tool.js /home/steam/tool.js
 COPY --chown=steam:steam entrypoint.sh /home/steam/entrypoint.sh
 COPY --chown=steam:steam default.ini /home/steam/default.ini
