@@ -1,5 +1,5 @@
 import { HandlerInput } from "@why-ts/cli";
-import { readFile, stat, writeFile } from "fs/promises";
+import { mkdir, readFile, stat, writeFile } from "fs/promises";
 import * as INI from "ini";
 import path from "path";
 import { env } from "process";
@@ -71,5 +71,6 @@ async function readConfig(file: string) {
 }
 
 async function writeConfig(file: string, config: any) {
+	await mkdir(path.dirname(file), { recursive: true });
 	await writeFile(file, INI.stringify(config));
 }

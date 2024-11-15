@@ -2,8 +2,8 @@
 
 set -ex
 
-printenv
-ls -lah /home/steam
+# printenv
+# ls -lah /home/steam/Zomboid
 
 node /home/steam/tool.js config --env-var-prefix=PZ_
 
