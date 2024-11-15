@@ -1,5 +1,5 @@
 {
 	"kind": "steam",
 	"appId": 380870,
-	"branches": { "public": { "alias": "latest" } }
+	"branches": { "public": { "aliases": ["latest"] } }
 }

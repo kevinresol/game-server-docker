@@ -1,8 +1,7 @@
 import { HandlerInput } from "@why-ts/cli";
-import { peek } from "@why-ts/core";
+import { delay } from "@why-ts/core";
 import { match } from "ts-pattern";
 import { z } from "zod";
-import delay from "../../util/delay";
 
 type Args = {
 	appId: number;

@@ -1,17 +1,22 @@
 {
 	"scripts": {
 		"build": "esbuild src/main.ts --bundle --outfile=dist/main.js --platform=node",
-		"eval": "ts-node src/main.ts"
+		"eval": "ts-node src/main.ts",
+		"pack": "pkg"
 	},
 	"devDependencies": {
+		"@types/ini": "^4.1.1",
 		"@types/node": "^22.9.0",
 		"esbuild": "^0.24.0",
 		"ts-node": "^10.9.2",
+		"tsconfig-paths": "^4.2.0",
 		"typescript": "^5.6.3"
 	},
 	"dependencies": {
-		"@why-ts/cli": "^0.4.1",
-		"@why-ts/core": "^0.2.1",
+		"@why-ts/cli": "^0.5.0",
+		"@why-ts/core": "^0.3.1",
+		"ini": "^5.0.0",
+		"pkg": "^5.8.1",
 		"ts-pattern": "^5.5.0",
 		"zod": "^3.23.8"
 	}

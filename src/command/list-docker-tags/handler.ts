@@ -21,36 +21,34 @@ export async function listDockerTags({
 	repository,
 	registry = DEFAULT_REGISTRY,
 }: Omit<Args, "format">) {
-	const repo = match(repository.split("/"))
-		.with([P.string], ([name]) => ["library", name])
+	const [ns, repo] = match(repository.split("/"))
+		.with([P.string], ([name]) => ["library", name] as const)
 		.with([P.string, P.string], (v) => v)
 		.otherwise(() => {
 			throw new Error("Invalid repository format");
 		});
 
-	const res = await queryDockerApi<{ name: string; last_updated: string }>(
-		new URL(
-			`/v2/namespaces/${repo[0]}/repositories/${repo[1]}/tags?page_size=100`,
-			registry
+	return match(
+		await queryDockerApi<{ name: string; last_updated: string }>(
+			new URL(
+				`/v2/namespaces/${ns}/repositories/${repo}/tags?page_size=100`,
+				registry
+			)
 		)
-	);
-
-	console.log(res);
-
-	return res.map((tag) => ({
-		name: tag.name,
-		lastUpdated: new Date(tag.last_updated),
-	}));
+	)
+		.with({ success: false, code: 404 }, () => []) // 404 means the repository does not exist
+		.with({ success: true }, ({ data }) =>
+			data.map((tag) => ({
+				name: tag.name,
+				lastUpdated: new Date(tag.last_updated),
+			}))
+		)
+		.otherwise(({ error }) => {
+			throw new Error(`Failed to query docker API: ${error}`);
+		});
 }
 
-function getFormatter(format: "json" | "csv") {
-	return match(format)
-		.with("csv", () => (v: string[]) => v.join(","))
-		.with("json", () => (v: string[]) => JSON.stringify(v))
-		.exhaustive();
-}
-
-async function queryDockerApi<T>(url: URL): Promise<T[]> {
+async function queryDockerApi<T>(url: URL): Promise<QueryResult<T[]>> {
 	const results: T[] = [];
 
 	while (true) {
@@ -58,9 +56,7 @@ async function queryDockerApi<T>(url: URL): Promise<T[]> {
 		const res = await fetch(url);
 
 		if (res.status !== 200) {
-			throw new Error(
-				`Failed to query ${url}: ${res.status} ${await res.text()}`
-			);
+			return { success: false, code: res.status, error: await res.json() };
 		}
 
 		const json = (await res.json()) as DockerApiResponse<T>;
@@ -72,8 +68,12 @@ async function queryDockerApi<T>(url: URL): Promise<T[]> {
 		url = new URL(json.next);
 	}
 
-	return results;
+	return { success: true, data: results };
 }
+
+type QueryResult<T> =
+	| { success: true; data: T }
+	| { success: false; code: number; error: unknown };
 
 type DockerApiResponse<T> = {
 	count: number;
