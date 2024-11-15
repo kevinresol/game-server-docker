@@ -14,12 +14,16 @@ export default async function ({
 	args: { dataPath, serverName, envVarPrefix, value },
 	logger,
 }: HandlerInput<Args>) {
+	let modified = false;
 	function set(obj: any, path: string, value: string) {
 		logger.error(`Setting config: ${path}=${value}`);
 		const keys = path.split(".");
 		const lastKey = keys.pop()!;
 		const lastObj = keys.reduce((obj, key) => (obj[key] = obj[key] ?? {}), obj);
-		lastObj[lastKey] = value;
+		if (lastObj[lastKey] !== value) {
+			lastObj[lastKey] = value;
+			modified = true;
+		}
 	}
 
 	logger.error("Update game config");
@@ -42,9 +46,12 @@ export default async function ({
 			set(config, key, val);
 		}
 	}
-
-	logger.error(`Writing config to ${file}`);
-	await writeConfig(file, config);
+	if (modified) {
+		logger.error(`Writing config to ${file}`);
+		await writeConfig(file, config);
+	} else {
+		logger.error("No changes");
+	}
 }
 
 async function readConfig(file: string) {

@@ -5,10 +5,6 @@ import handler from "./handler";
 export default baseCommand
 	.meta({ description: "Update Game Config" })
 	.option(
-		"file",
-		o.string({ required: true, description: "Config file location" })
-	)
-	.option(
 		"value",
 		o.dict({
 			description:
