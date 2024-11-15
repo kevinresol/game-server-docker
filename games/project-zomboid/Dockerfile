@@ -8,7 +8,7 @@ ENV SERVER_NAME="myzomboidserver"
 ENV GAME_BIN_PATH="/home/steam/Steam/steamapps/common/Project Zomboid Dedicated Server"
 ENV GAME_DATA_PATH="/home/steam/Zomboid"
 
-RUN ./steamcmd.sh +login anonymous +app_update 380870 -beta ${BRANCH} validate +quit
+RUN ./steamcmd.sh +login anonymous +app_update 380870 -beta ${BRANCH} validate +logoff +quit
 COPY dist/tool /home/steam/tool
 COPY entrypoint.sh /home/steam/entrypoint.sh
 COPY default.ini /home/steam/default.ini
