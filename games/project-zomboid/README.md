@@ -2,7 +2,7 @@
 
 ```
 docker run -d \
-  -v $(pwd)/ZomboidConfig:/home/steam/Zomboid \
+  -v $(pwd)/Zomboid:/home/steam/Zomboid \
   -p 16261:16261/udp -p 16262:16262/udp [-p 27015:27015/tcp] \
   [-e SERVER_NAME=<value>]
   [-e PZ_PVP=<value>]

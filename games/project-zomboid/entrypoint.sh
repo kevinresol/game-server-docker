@@ -8,4 +8,4 @@ set -ex
 node /home/steam/tool.js config --env-var-prefix=PZ_
 
 
-"$GAME_BIN_PATH/start-server.sh" -cachedir "$GAME_DATA_PATH" -servername "$SERVER_NAME" "$@"
+"$GAME_BIN_PATH/start-server.sh" -cachedir="$GAME_DATA_PATH" -servername "$SERVER_NAME" "$@"
