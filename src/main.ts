@@ -18,5 +18,5 @@ import getSteamBuildIdCommand from "./command/get-steam-build-id/command";
 			process.exit(1);
 		});
 
-	console.log(output);
+	// console.log(output);
 })();

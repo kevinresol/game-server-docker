@@ -45,9 +45,9 @@ export async function buildGameTool(game: string) {
 	});
 
 	// bundle the nodejs runtime
-	await pkg.exec([
-		outputJs,
-		"--targets=node18-linux-x64",
-		`--out-path=${outputFolder}`,
-	]);
+	// await pkg.exec([
+	// 	outputJs,
+	// 	"--targets=node18-linux-x64",
+	// 	`--out-path=${outputFolder}`,
+	// ]);
 }

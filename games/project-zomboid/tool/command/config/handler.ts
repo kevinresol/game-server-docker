@@ -54,9 +54,17 @@ export default async function ({
 	}
 }
 
+async function fileExists(file: string) {
+	try {
+		return (await stat(file)).isFile();
+	} catch {
+		return false;
+	}
+}
+
 async function readConfig(file: string) {
 	const content = await readFile(
-		(await stat(file)).isFile() ? file : "/home/steam/default.ini",
+		(await fileExists(file)) ? file : "/home/steam/default.ini",
 		"utf-8"
 	);
 	return INI.parse(content);
