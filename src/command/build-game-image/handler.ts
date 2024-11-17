@@ -69,6 +69,7 @@ async function build(game: string, force?: boolean) {
 					);
 
 				if (shouldBuild) {
+					console.log(`== Building ${game}:${desiredTags.join(", ")}`);
 					await buildGameTool(game);
 
 					await buildAndPushImage({
@@ -78,6 +79,10 @@ async function build(game: string, force?: boolean) {
 						tags: desiredTags,
 						args: { BRANCH: branch },
 					});
+				} else {
+					console.log(
+						`== Skipping ${game}:${desiredTags.join(", ")} (up to date)`
+					);
 				}
 			}
 		})
@@ -97,6 +102,7 @@ async function buildAndPushImage(args: {
 }) {
 	const images = args.tags.map((tag) => `${args.repository}:${tag}`);
 
+	console.log(`== Building images: ${images.join(", ")}`);
 	await shell("docker", [
 		"build",
 		"--platform=linux/amd64",
@@ -108,9 +114,12 @@ async function buildAndPushImage(args: {
 		`--file=${args.dockerfile}`,
 		args.context,
 	]);
+	await shell("df", ["-h"]);
 
 	// remove image after push
+	console.log(`== Removing images: ${images.join(", ")}`);
 	await shell("docker", ["rmi", ...images]);
+	await shell("df", ["-h"]);
 }
 
 const INFO_SCHEMA = z.discriminatedUnion("kind", [
