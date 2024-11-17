@@ -118,8 +118,7 @@ async function buildAndPushImage(args: {
 
 	// remove image after push
 	console.log(`== Removing images: ${images.join(", ")}`);
-	// await shell("docker", ["rmi", ...images]);
-	await shell("docker", ["system", "prune", "-af"]);
+	await shell("docker", ["builder", "prune", "--keep-storage", "2GB", "-f"]);
 	await shell("df", ["-h"]);
 }
 
