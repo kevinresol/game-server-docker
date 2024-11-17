@@ -4,11 +4,13 @@ import buildGameImageCommand from "./command/build-game-image/command";
 import buildGameToolCommand from "./command/build-game-tool/command";
 import evalGameToolCommand from "./command/eval-game-tool/command";
 import getSteamBuildIdCommand from "./command/get-steam-build-id/command";
+import listSteamBranchesCommand from "./command/list-steam-branches/command";
 
 (async () => {
 	const output = await program({ description: "Game Server Docker Tool" })
 		.command("list-docker-tags", listDockerTagsCommand)
 		.command("get-steam-build-id", getSteamBuildIdCommand)
+		.command("list-steam-branches", listSteamBranchesCommand)
 		.command("build-game-image", buildGameImageCommand)
 		.command("build-game-tool", buildGameToolCommand)
 		.command("eval-game-tool", evalGameToolCommand)

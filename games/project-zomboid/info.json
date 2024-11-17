@@ -1,5 +1,4 @@
 {
 	"kind": "steam",
-	"appId": 380870,
-	"branches": { "public": { "aliases": ["latest"] } }
+	"appId": 380870
 }

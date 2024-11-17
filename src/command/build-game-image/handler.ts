@@ -4,27 +4,27 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { match } from "ts-pattern";
 import { z } from "zod";
-import { getSteamBuildId } from "../get-steam-build-id/handler";
-import { listDockerTags } from "../list-docker-tags/handler";
 import { buildGameTool } from "../build-game-tool/handler";
+import { listDockerTags } from "../list-docker-tags/handler";
+import { listSteamBranches } from "../list-steam-branches/handler";
 
 const DOCKER_NAMESPACE = process.env.DOCKER_NAMESPACE ?? "kevinresol";
 
 type Args = {
 	game?: string;
 	all?: boolean;
+	force?: boolean;
 };
 
 export default async function ({
-	args: { game, all },
-	logger,
+	args: { game, all, force },
 }: HandlerInput<Args>) {
 	if (all) {
 		for (const game of await getAllGames()) {
-			await build(game);
+			await build(game, force);
 		}
 	} else if (game) {
-		await build(game);
+		await build(game, force);
 	} else {
 		throw new UsageError(
 			"RUNTIME_ERROR",
@@ -33,7 +33,7 @@ export default async function ({
 	}
 }
 
-async function build(game: string) {
+async function build(game: string, force?: boolean) {
 	const info = INFO_SCHEMA.parse(
 		JSON.parse(await readFile(getGamePath(game, "info.json"), "utf-8"))
 	);
@@ -42,17 +42,23 @@ async function build(game: string) {
 	const pushedTags = await listDockerTags({ repository });
 
 	await match(info)
-		.with({ kind: "steam" }, async ({ appId, branches }) => {
-			for (const [branch, { aliases = [] }] of Object.entries(branches)) {
-				const data = await getSteamBuildId({ appId, branch });
+		.with({ kind: "steam" }, async ({ appId }) => {
+			const branches = await listSteamBranches({ appId });
 
-				const desiredTags = [branch, ...aliases];
-				const shouldBuild = desiredTags.some(
-					(desired) =>
-						match(pushedTags.find(({ name }) => name === desired))
-							.with(undefined, () => true) // if the tag is not already pushed, we should build
-							.otherwise(({ lastUpdated }) => lastUpdated < data.timeUpdated) // if the tag is pushed but outdated, we should build
-				);
+			for (const [branch, { timeUpdated }] of Object.entries(branches)) {
+				const desiredTags = [
+					sanitizeTag(branch),
+					...(branch === "public" ? ["latest"] : []), // also tag the public branch as latest
+				];
+
+				const shouldBuild =
+					force ||
+					desiredTags.some(
+						(desired) =>
+							match(pushedTags.find(({ name }) => name === desired))
+								.with(undefined, () => true) // if the tag is not already pushed, we should build
+								.otherwise((v) => v.lastUpdated < timeUpdated) // if the tag is pushed but outdated, we should build
+					);
 
 				if (shouldBuild) {
 					await buildGameTool(game);
@@ -68,6 +74,10 @@ async function build(game: string) {
 			}
 		})
 		.exhaustive();
+}
+
+function sanitizeTag(tag: string) {
+	return tag.replace(/[^a-zA-Z0-9.-]/g, "_");
 }
 
 async function buildAndPushImage(args: {
@@ -96,6 +106,5 @@ const INFO_SCHEMA = z.discriminatedUnion("kind", [
 	z.object({
 		kind: z.literal("steam"),
 		appId: z.number(),
-		branches: z.record(z.object({ aliases: z.string().array().optional() })),
 	}),
 ]);

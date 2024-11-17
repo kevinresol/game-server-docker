@@ -15,9 +15,15 @@ docker run -d \
   [-adminpassword=<value>] \
 ```
 
+### Server Config
+
 Environment variables prefixed with `PZ_` will be written to the config file before server start.
 
-Additional args (such as `-ip` in the example) will be forwarded to `start-server.sh`. See more in the [office doc](https://pzwiki.net/wiki/Startup_parameters).
+### Script Arguments
+
+Additional args after the image name (such as `-ip` in the example) will be forwarded to `start-server.sh`. See more in the [office doc](https://pzwiki.net/wiki/Startup_parameters).
+
+If you are using docker-compose or alike, specify the extra args via the `command` field.
 
 > Note: while -adminpassword is optional, it is required for the first run otherwise the script will prompt for a password, which will not work on an unattended session.
 

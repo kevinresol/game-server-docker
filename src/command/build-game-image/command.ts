@@ -12,4 +12,10 @@ export default command({ description: "Build Game Server Docker Image" })
 			description: "Build all games in the ./games folder",
 		})
 	)
+	.option(
+		["force", "force"],
+		o.boolean({
+			description: "Build all games in the ./games folder",
+		})
+	)
 	.handle(handler);

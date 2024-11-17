@@ -4,7 +4,8 @@ on:
   push:
     branches:
       - master
-  pull_request:
+  schedule:
+    - cron: "0 * * * *"
 
 permissions:
   actions: read
@@ -35,4 +36,10 @@ jobs:
           cache: "pnpm"
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm eval build-game-image --all
+
+      - run: |
+          if [[ "${{ github.event_name }}" == "schedule" ]]; then
+            pnpm eval build-game-image --all
+          else
+            pnpm eval build-game-image --all --force
+          fi

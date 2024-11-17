@@ -2,12 +2,11 @@ FROM cm2network/steamcmd:latest
 
 ARG BRANCH=public
 
-ENV SERVER_NAME="myzomboidserver"
+ENV SERVER_NAME="myserver"
 
 # internal vars
 ENV GAME_BIN_PATH="/home/steam/Steam/steamapps/common/ProjectZomboidDedicatedServer"
 ENV GAME_DATA_PATH="/home/steam/Zomboid"
-ENV NVM_DIR="/home/steam/.nvm"
 
 # install nodejs as root
 USER root
