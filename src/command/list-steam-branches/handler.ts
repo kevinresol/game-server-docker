@@ -19,7 +19,12 @@ export default async function ({
 export async function listSteamBranches({ appId }: Args) {
 	async function query(
 		attempts = 10
-	): Promise<Record<string, { buildId: string; timeUpdated: Date }>> {
+	): Promise<
+		Record<
+			string,
+			{ buildId: string; timeUpdated: Date; passwordRequired: boolean }
+		>
+	> {
 		if (attempts === 0) {
 			throw new Error("Failed to query SteamCmd API");
 		}
@@ -36,11 +41,12 @@ export async function listSteamBranches({ appId }: Args) {
 			.with({ status: "success" }, ({ data }) =>
 				Object.fromEntries(
 					Object.entries(data[appId].depots.branches).map(
-						([branch, { buildid, timeupdated }]) => [
+						([branch, { buildid, timeupdated, pwdrequired }]) => [
 							branch,
 							{
 								buildId: buildid,
 								timeUpdated: new Date(Number(timeupdated) * 1000),
+								passwordRequired: Boolean(pwdrequired),
 							},
 						]
 					)
@@ -64,7 +70,7 @@ function makeSteamCmdSchema(appId: number) {
 						branches: z.record(
 							z.object({
 								buildid: z.string(),
-								pwsrequired: z.literal("1").optional(),
+								pwdrequired: z.literal("1").optional(),
 								timeupdated: z.string(),
 							})
 						),

@@ -45,7 +45,9 @@ async function build(game: string, force?: boolean) {
 		.with({ kind: "steam" }, async ({ appId }) => {
 			const branches = await listSteamBranches({ appId });
 
-			for (const [branch, { timeUpdated }] of Object.entries(branches)) {
+			for (const [branch, { timeUpdated }] of Object.entries(branches).filter(
+				([, { passwordRequired }]) => !passwordRequired
+			)) {
 				const desiredTags = [
 					sanitizeTag(branch),
 					...(branch === "public" ? ["latest"] : []), // also tag the public branch as latest
