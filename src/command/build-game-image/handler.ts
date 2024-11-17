@@ -131,6 +131,7 @@ async function buildAndPushImage(args: {
 
 	// clean up after push
 	console.log(`== Cleaning up builder cache`);
+	await shell("docker", ["rmi", ...images]);
 	await shell("docker", ["builder", "prune", "-af"]);
 }
 
