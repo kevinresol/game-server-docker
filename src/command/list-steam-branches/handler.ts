@@ -18,7 +18,7 @@ export default async function ({
 
 export async function listSteamBranches({ appId }: Args) {
 	async function query(
-		attempts = 10
+		attempts = 20
 	): Promise<
 		Record<
 			string,
@@ -35,7 +35,7 @@ export async function listSteamBranches({ appId }: Args) {
 
 		return match(makeSteamCmdSchema(appId).parse(await res.json()))
 			.with({ status: "failed" }, async () => {
-				await delay(1000);
+				await delay(5000);
 				return query(attempts - 1);
 			})
 			.with({ status: "success" }, ({ data }) =>
