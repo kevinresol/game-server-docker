@@ -51,6 +51,7 @@ async function build(game: string, force?: boolean) {
 
 	await match(info)
 		.with({ kind: "steam" }, async ({ appId, ignoreBranches = [] }) => {
+			console.log(`== Listing Steam branches for app=${appId}...`);
 			const branches = Object.entries(await listSteamBranches({ appId }))
 				.filter(
 					([branch, { passwordRequired }]) =>
@@ -60,6 +61,10 @@ async function build(game: string, force?: boolean) {
 				.sort(
 					(a, b) => b[1].timeUpdated.getTime() - a[1].timeUpdated.getTime()
 				);
+
+			console.log(
+				`== Found branches: ${branches.map(([branch]) => branch).join(", ")}`
+			);
 
 			for (const [branch, { timeUpdated }] of branches) {
 				const desiredTags = [
