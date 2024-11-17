@@ -41,6 +41,9 @@ async function build(game: string, force?: boolean) {
 	const repository = `${DOCKER_NAMESPACE}/${game}-dedicated-server`;
 	const pushedTags = await listDockerTags({ repository });
 
+	// check docker version
+	shell("docker", ["version"]);
+
 	// do a system prune on GitHub Actions to avoid running out of disk space
 	if (process.env.GITHUB_ACTION) {
 		shell("docker", ["system", "prune", "-af"]);
@@ -123,7 +126,7 @@ async function buildAndPushImage(args: {
 
 	// clean up after push
 	console.log(`== Cleaning up builder cache`);
-	await shell("docker", ["builder", "prune", "--max-storage", "2GB", "-f"]);
+	await shell("docker", ["builder", "prune", "--keep-storage", "2GB", "-af"]);
 }
 
 const INFO_SCHEMA = z.discriminatedUnion("kind", [
