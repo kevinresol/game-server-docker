@@ -126,7 +126,7 @@ async function buildAndPushImage(args: {
 
 	// clean up after push
 	console.log(`== Cleaning up builder cache`);
-	await shell("docker", ["builder", "prune", "--keep-storage", "2GB", "-af"]);
+	await shell("docker", ["builder", "prune", "-af"]);
 }
 
 const INFO_SCHEMA = z.discriminatedUnion("kind", [
