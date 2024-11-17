@@ -42,11 +42,11 @@ async function build(game: string, force?: boolean) {
 	const pushedTags = await listDockerTags({ repository });
 
 	// check docker version
-	shell("docker", ["version"]);
+	await shell("docker", ["version"]);
 
 	// do a system prune on GitHub Actions to avoid running out of disk space
 	if (process.env.GITHUB_ACTION) {
-		shell("docker", ["system", "prune", "-af"]);
+		await shell("docker", ["system", "prune", "-af"]);
 	}
 
 	await match(info)
