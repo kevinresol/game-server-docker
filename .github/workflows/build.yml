@@ -19,6 +19,7 @@ jobs:
         game:
           - abiotic-factor
           - project-zomboid
+          - stationeers
     steps:
       - uses: actions/checkout@v4
         with:
