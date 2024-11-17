@@ -3,7 +3,7 @@ FROM kevinresol/base-dedicated-server:wine
 ARG BRANCH=public
 
 # internal vars
-ENV GAME_BIN_PATH="/opt/abiotic-factor-dedicated-server"
+ENV GAME_BIN_PATH="/home/steam/Steam/steamapps/common/AbioticFactorDedicatedServer"
 ENV GAME_DATA_PATH="/data"
 
 # install game

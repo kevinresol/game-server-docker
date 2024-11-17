@@ -5,7 +5,7 @@ ARG BRANCH=public
 ENV SERVER_NAME="myserver"
 
 # internal vars
-ENV GAME_BIN_PATH="/opt/project-zomboid-dedicated-server"
+ENV GAME_BIN_PATH="/home/steam/Steam/steamapps/common/ProjectZomboidDedicatedServer"
 ENV GAME_DATA_PATH="/data"
 
 # install game 

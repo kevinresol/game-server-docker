@@ -42,9 +42,10 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: |
-          if [[ "${{ github.event_name }}" == "schedule" ]]; then
-            pnpm eval build-game-image --game=${{ matrix.game }}
-          else
-            pnpm eval build-game-image --game=${{ matrix.game }} --force
-          fi
+      # force build everything on code push
+      - run: pnpm eval build-game-image --game=${{ matrix.game }} --force
+        if: ${{ github.event_name != 'schedule' }}
+
+      # build only updated games on schedule
+      - run: pnpm eval build-game-image --game=${{ matrix.game }}
+        if: ${{ github.event_name == 'schedule' }}
