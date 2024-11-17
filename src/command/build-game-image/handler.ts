@@ -69,7 +69,7 @@ async function build(game: string, force?: boolean) {
 					);
 
 				if (shouldBuild) {
-					console.log(`== Building ${game}:${desiredTags.join(", ")}`);
+					console.log(`== Building ${game}: ${desiredTags.join(", ")}`);
 					await buildGameTool(game);
 
 					await buildAndPushImage({
@@ -81,7 +81,7 @@ async function build(game: string, force?: boolean) {
 					});
 				} else {
 					console.log(
-						`== Skipping ${game}:${desiredTags.join(", ")} (up to date)`
+						`== Skipping ${game}: ${desiredTags.join(", ")} (up to date)`
 					);
 				}
 			}
@@ -119,6 +119,7 @@ async function buildAndPushImage(args: {
 	// remove image after push
 	console.log(`== Removing images: ${images.join(", ")}`);
 	await shell("docker", ["rmi", ...images]);
+	await shell("docker", ["image", "prune", "-f"]);
 	await shell("df", ["-h"]);
 }
 
