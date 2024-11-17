@@ -41,6 +41,11 @@ async function build(game: string, force?: boolean) {
 	const repository = `${DOCKER_NAMESPACE}/${game}-dedicated-server`;
 	const pushedTags = await listDockerTags({ repository });
 
+	// do a system prune on GitHub Actions to avoid running out of disk space
+	if (process.env.GITHUB_ACTION) {
+		shell("docker", ["system", "prune", "-af"]);
+	}
+
 	await match(info)
 		.with({ kind: "steam" }, async ({ appId, ignoreBranches = [] }) => {
 			const branches = Object.entries(await listSteamBranches({ appId }))
@@ -103,6 +108,7 @@ async function buildAndPushImage(args: {
 	const images = args.tags.map((tag) => `${args.repository}:${tag}`);
 
 	console.log(`== Building images: ${images.join(", ")}`);
+	await shell("df", ["-h"]);
 	await shell("docker", [
 		"build",
 		"--platform=linux/amd64",
@@ -114,12 +120,10 @@ async function buildAndPushImage(args: {
 		`--file=${args.dockerfile}`,
 		args.context,
 	]);
-	await shell("df", ["-h"]);
 
-	// remove image after push
-	console.log(`== Removing images: ${images.join(", ")}`);
-	await shell("docker", ["builder", "prune", "--keep-storage", "2GB", "-f"]);
-	await shell("df", ["-h"]);
+	// clean up after push
+	console.log(`== Cleaning up builder cache`);
+	await shell("docker", ["builder", "prune", "--max-storage", "2GB", "-f"]);
 }
 
 const INFO_SCHEMA = z.discriminatedUnion("kind", [

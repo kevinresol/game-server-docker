@@ -1,31 +1,31 @@
-# A Collection of Dockerized Dedicated Game Servers
+# Dockerized Dedicated Game Servers
 
-Currently the following games are supported and they can be find in the `games` folder:
+This repository provides a collection of readily deployable Docker images for dedicated game servers.
 
-- Abiotic Factor ([Docker Hub](https://hub.docker.com/r/kevinresol/abiotic-factor-dedicated-server/tags))
-- Project Zomboid ([Docker Hub](https://hub.docker.com/r/kevinresol/project-zomboid-dedicated-server/tags))
-- Stationeers ([Docker Hub](https://hub.docker.com/r/kevinresol/stationeers-dedicated-server/tags))
+- Abiotic Factor -
+  [README](games/abiotic-factor/README.md) -
+  [Docker Hub](https://hub.docker.com/r/kevinresol/abiotic-factor-dedicated-server/tags)
+- Project Zomboid -
+  [README](games/project-zomboid/README.md) -
+  [Docker Hub](https://hub.docker.com/r/kevinresol/project-zomboid-dedicated-server/tags)
+- Stationeers -
+  [README](games/stationeers/README.md) -
+  [Docker Hub](https://hub.docker.com/r/kevinresol/stationeers-dedicated-server/tags)
 
-## Philosophy
+## Project Philosophy
 
-### Server executable pre-downloaded and stored in the image
+- **Pre-downloaded Server Executables:** Images include the server executable, eliminating download delays during startup. Docker often outperforms Steam in download speeds.
+- **Mountable Save Folder:** Each image allows mounting a custom folder to persist server save data.
+- **Unopinionated Entrypoint:** Most images expose the server executable directly in the Dockerfile entrypoint. This ensures compatibility with all official server executable arguments.
+- **Configuration Flexibility:** For games configured via config files, a mechanism is provided (when possible) to modify configurations before server launch (e.g., Project Zomboid).
+- **Comprehensive Branch Support:** All public Steam branches ("beta") are built as separate images with tags matching the branch name (special characters replaced). Cron jobs maintain image updates.
 
-The server is ready to run right after the docker image is downloaded. This saves download time as the download speed for Docker service is generally much faster than Steam service.
+## Development Setup
 
-### Unopinionated entrypoint
+1. **Install Node.js and pnpm:** Follow the official installation guides for your system.
+1. **Install dependencies:** Run `pnpm i` in the project directory.
+1. **Build a Game Image:** Use the command `pnpm eval build-game-image --game=<name>` where `<name>` is the folder name of the desired game under the `games` directory.
 
-Most of the time the server executable is exposed directly in Dockerfile's `ENTRYPOINT`. As a result, any arguments passed to `docker run` or in docker-compose's `command` field will be directly forwarded to the executable. Thus all the functionality of the official exeucutable are preserved.
+For a list of available build commands, run `pnpm eval --help`.
 
-Sometimes, the game servers are configured via config files instead of cli flags. In that case, a mechamism will be provided, on a best-effort basis, to modify the config file before running the server executable. (See Project Zomboid for an example)
-
-### Expose all Steam branches ("beta")
-
-All the public (non-password protected) branches on Steam will be built as Docker images, with the Docker tag equal to the Steam branch name (with special characters replaced). A cron job is used to make sure the images are up-to-date.
-
-## Development
-
-1. Install Node.js and pnpm
-2. Run `pnpm i`
-3. Run `pnpm eval build-game-image --game=<name>` to build a game image, where `<name>` is a folder name under the `games` folder
-
-(Run `pnpm eval --help` for more commands in the build tool)
+> Note: This readme assumes basic familiarity with Docker and Node.js/pnpm.

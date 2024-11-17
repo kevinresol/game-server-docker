@@ -24,9 +24,11 @@ export async function getAllGames(): Promise<string[]> {
 	return items.filter((_, i) => isDir[i]);
 }
 
-export function shell(command: string, args?: string[]) {
+export function shell(command: string, args: string[] = []) {
+	console.log(`> ${command} ${args.join(" ")}`);
+
 	return new Promise<void>((resolve, reject) => {
-		const proc = spawn(command, args ?? [], { stdio: "inherit" });
+		const proc = spawn(command, args, { stdio: "inherit" });
 
 		proc.on("exit", (code) => {
 			if (code === 0) {
