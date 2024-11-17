@@ -1,4 +1,4 @@
-FROM cm2network/steamcmd:latest
+FROM kevinresol/base-dedicated-server:latest
 
 ARG BRANCH=public
 
@@ -8,15 +8,7 @@ ENV SERVER_NAME="myserver"
 ENV GAME_BIN_PATH="/opt/project-zomboid-dedicated-server"
 ENV GAME_DATA_PATH="/data"
 
-# install additional packages as root
-USER root
-RUN curl -o- https://deb.nodesource.com/setup_22.x | bash
-RUN apt-get install -y nodejs \
-	&& apt-get autoremove -y \
-	&& rm -rf /var/lib/apt/lists/*
-
-# install game as steam user
-USER steam
+# install game 
 RUN ./steamcmd.sh \
 	+force_install_dir ${GAME_BIN_PATH} \
 	+login anonymous \
