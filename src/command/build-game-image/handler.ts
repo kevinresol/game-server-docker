@@ -42,12 +42,15 @@ async function build(game: string, force?: boolean) {
 	const pushedTags = await listDockerTags({ repository });
 
 	await match(info)
-		.with({ kind: "steam" }, async ({ appId }) => {
-			const branches = await listSteamBranches({ appId });
+		.with({ kind: "steam" }, async ({ appId, ignoreBranches = [] }) => {
+			const branches = Object.entries(
+				await listSteamBranches({ appId })
+			).filter(
+				([branch, { passwordRequired }]) =>
+					!passwordRequired && !ignoreBranches.includes(branch)
+			);
 
-			for (const [branch, { timeUpdated }] of Object.entries(branches).filter(
-				([, { passwordRequired }]) => !passwordRequired
-			)) {
+			for (const [branch, { timeUpdated }] of branches) {
 				const desiredTags = [
 					sanitizeTag(branch),
 					...(branch === "public" ? ["latest"] : []), // also tag the public branch as latest
@@ -108,5 +111,6 @@ const INFO_SCHEMA = z.discriminatedUnion("kind", [
 	z.object({
 		kind: z.literal("steam"),
 		appId: z.number(),
+		ignoreBranches: z.array(z.string()).optional(),
 	}),
 ]);
