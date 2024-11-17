@@ -1,5 +1,5 @@
 {
 	"kind": "steam",
 	"appId": 380870,
-	"ignoreBranches": ["legacy41_77"]
+	"ignoreBranches": ["legacy41_77", "legacy_41_78_7"]
 }
