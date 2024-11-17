@@ -43,12 +43,15 @@ async function build(game: string, force?: boolean) {
 
 	await match(info)
 		.with({ kind: "steam" }, async ({ appId, ignoreBranches = [] }) => {
-			const branches = Object.entries(
-				await listSteamBranches({ appId })
-			).filter(
-				([branch, { passwordRequired }]) =>
-					!passwordRequired && !ignoreBranches.includes(branch)
-			);
+			const branches = Object.entries(await listSteamBranches({ appId }))
+				.filter(
+					([branch, { passwordRequired }]) =>
+						!passwordRequired && !ignoreBranches.includes(branch)
+				)
+				// sort image so that latest image is built first
+				.sort(
+					(a, b) => b[1].timeUpdated.getTime() - a[1].timeUpdated.getTime()
+				);
 
 			for (const [branch, { timeUpdated }] of branches) {
 				const desiredTags = [
@@ -105,6 +108,9 @@ async function buildAndPushImage(args: {
 		`--file=${args.dockerfile}`,
 		args.context,
 	]);
+
+	// remove image after push
+	await shell("docker", ["rmi", ...images]);
 }
 
 const INFO_SCHEMA = z.discriminatedUnion("kind", [
