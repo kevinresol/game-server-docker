@@ -14,7 +14,7 @@ RUN ./steamcmd.sh \
 	+logoff +quit
 
 RUN ln -sf "$GAME_DATA_PATH" "${GAME_BIN_PATH}/FactoryGame/Saved"
-RUN ln -sf "$GAME_DATA_PATH" "/home/steam/.config/Epic/FactoryGame/Saved"
+RUN mkdir -p /home/steam/.config/Epic/FactoryGame && ln -sf "$GAME_DATA_PATH" /home/steam/.config/Epic/FactoryGame/Saved
 
 COPY --chown=steam:steam entrypoint.sh /home/steam/entrypoint.sh
 
