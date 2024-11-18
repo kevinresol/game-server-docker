@@ -23,3 +23,7 @@ If using docker-compose, define any additional arguments in the command section 
 ### Volumes
 
 Mounting a volume with your server save files is essential. This is done using the `-v` flag in `docker run` or the `volumes` field in docker-compose. The volume is mapped to the container's `/data` directory.
+
+### Configuration
+
+Satisfactory comes with a pretty decent Server Manager in-game. You need to use it to create a new game and configure the server.
