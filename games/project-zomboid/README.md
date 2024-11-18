@@ -25,9 +25,13 @@ Environment variables prefixed with `PZ_` will be written to the config file bef
 
 Additional args after the image name (such as `-ip` in the example) will be forwarded to `start-server.sh`. See more in the [office doc](https://pzwiki.net/wiki/Startup_parameters).
 
-If you are using docker-compose or alike, specify the extra args via the `command` field.
+If using docker-compose, define any additional arguments in the command section of your service definition.
 
 > Note: while -adminpassword is optional, it is required for the first run otherwise the script will prompt for a password, which will not work on an unattended session.
+
+### Volumes
+
+Mounting a volume with your server save files is essential. This is done using the `-v` flag in `docker run` or the `volumes` field in docker-compose. The volume is mapped to the container's `/data` directory and also passed to the server executable's `-cachedir` flag.
 
 # Environment Variables
 
