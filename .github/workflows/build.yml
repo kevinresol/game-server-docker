@@ -21,6 +21,7 @@ jobs:
           - project-zomboid
           - stationeers
           - valheim
+          - satisfactory
     steps:
       - uses: actions/checkout@v4
         with:
