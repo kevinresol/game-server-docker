@@ -12,7 +12,7 @@ ENV LD_LIBRARY_PATH="${GAME_BIN_PATH}/linux64:${LD_LIBRARY_PATH}"
 RUN ./steamcmd.sh \
 	+force_install_dir ${GAME_BIN_PATH} \
 	+login anonymous \
-	+app_update 892970 -beta ${BRANCH} validate \
+	+app_update 896660 -beta ${BRANCH} validate \
 	+logoff +quit
 
 COPY --chown=steam:steam entrypoint.sh /home/steam/entrypoint.sh
