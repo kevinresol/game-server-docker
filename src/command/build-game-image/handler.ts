@@ -8,23 +8,23 @@ import { buildGameTool } from "../build-game-tool/handler";
 import { listDockerTags } from "../list-docker-tags/handler";
 import { listSteamBranches } from "../list-steam-branches/handler";
 
-const DOCKER_NAMESPACE = process.env.DOCKER_NAMESPACE ?? "kevinresol";
-
 type Args = {
 	game?: string;
 	all?: boolean;
 	force?: boolean;
+	push?: boolean;
+	namespace: string;
 };
 
 export default async function ({
-	args: { game, all, force },
+	args: { game, all, force, namespace, push },
 }: HandlerInput<Args>) {
 	if (all) {
 		for (const game of await getAllGames()) {
-			await build(game, force);
+			await build({ game, force, namespace, push });
 		}
 	} else if (game) {
-		await build(game, force);
+		await build({ game, force, namespace, push });
 	} else {
 		throw new UsageError(
 			"RUNTIME_ERROR",
@@ -33,21 +33,23 @@ export default async function ({
 	}
 }
 
-async function build(game: string, force?: boolean) {
+async function build({
+	game,
+	force,
+	push,
+	namespace,
+}: {
+	game: string;
+	force?: boolean;
+	push?: boolean;
+	namespace: string;
+}) {
 	const info = INFO_SCHEMA.parse(
 		JSON.parse(await readFile(getGamePath(game, "info.json"), "utf-8"))
 	);
 
-	const repository = `${DOCKER_NAMESPACE}/${game}-dedicated-server`;
+	const repository = `${namespace}/${game}-dedicated-server`;
 	const pushedTags = await listDockerTags({ repository });
-
-	// check docker version
-	await shell("docker", ["version"]);
-
-	// do a system prune on GitHub Actions to avoid running out of disk space
-	if (process.env.GITHUB_ACTION) {
-		await shell("docker", ["system", "prune", "-af"]);
-	}
 
 	await match(info)
 		.with({ kind: "steam" }, async ({ appId, ignoreBranches = [] }) => {
@@ -86,11 +88,12 @@ async function build(game: string, force?: boolean) {
 					await buildGameTool(game);
 
 					await buildAndPushImage({
-						dockerfile: path.join("./games", game, "Dockerfile"),
-						context: path.join("./games", game),
+						dockerfile: getGamePath(game, "Dockerfile"),
+						context: getGamePath(game),
 						repository,
 						tags: desiredTags,
 						args: { BRANCH: branch },
+						push,
 					});
 				} else {
 					console.log(
@@ -112,6 +115,7 @@ async function buildAndPushImage(args: {
 	repository: string;
 	args: Record<string, string>;
 	tags: string[];
+	push?: boolean;
 }) {
 	const images = args.tags.map((tag) => `${args.repository}:${tag}`);
 
@@ -120,7 +124,7 @@ async function buildAndPushImage(args: {
 	await shell("docker", [
 		"build",
 		"--platform=linux/amd64",
-		`--push`,
+		...(args.push ? ["--push"] : []),
 		...images.map((image) => `--tag=${image}`),
 		...Object.entries(args.args).map(
 			([key, value]) => `--build-arg=${key}=${value}`

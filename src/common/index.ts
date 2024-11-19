@@ -34,7 +34,7 @@ export function shell(command: string, args: string[] = []) {
 			if (code === 0) {
 				resolve();
 			} else {
-				reject(new Error(`Game tool exited with code ${code}`));
+				reject(new Error(`Command exited with code ${code}`));
 			}
 		});
 	});

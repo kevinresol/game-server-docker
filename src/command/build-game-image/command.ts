@@ -13,9 +13,23 @@ export default command({ description: "Build Game Server Docker Image" })
 		})
 	)
 	.option(
-		["force", "force"],
+		["force", "f"],
 		o.boolean({
 			description: "Build all games in the ./games folder",
+		})
+	)
+	.option(
+		["push", "p"],
+		o.boolean({
+			description: "Push the image to the registry after building",
+		})
+	)
+	.option(
+		["namespace", "n"],
+		o.string({
+			required: true,
+			description: "The Docker namespace to use",
+			fallback: () => process.env.DOCKER_NAMESPACE,
 		})
 	)
 	.handle(handler);

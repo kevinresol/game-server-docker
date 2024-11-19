@@ -11,6 +11,9 @@ permissions:
   actions: read
   contents: read
 
+env:
+  DOCKER_NAMESPACE: kevinresol
+
 jobs:
   main:
     runs-on: ubuntu-latest
