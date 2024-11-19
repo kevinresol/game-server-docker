@@ -1,0 +1,17 @@
+# docker build -t kevinresol/space-engineers-dedicated-server-base -f .\Dockerfile.base .
+
+FROM kevinresol/base-dedicated-server:wine
+
+USER root
+RUN mkdir -p /scripts && \
+	curl -L https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks > /scripts/winetricks && \
+	chmod +x /scripts/winetricks
+
+RUN apt-get update -qqy && apt-get install -qqy xvfb cabextract
+RUN mkdir /wineprefix && chown -R steam:steam /wineprefix
+RUN dpkg --add-architecture i386 && apt-get update && apt-get install -y wine32:i386
+
+USER steam
+RUN wine --version
+COPY --chown=steam:steam --chmod=755 run_winetricks.sh /home/steam/run_winetricks.sh
+RUN /home/steam/run_winetricks.sh
