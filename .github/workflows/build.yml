@@ -25,6 +25,7 @@ jobs:
           - stationeers
           - valheim
           - satisfactory
+          - space-engineers
     steps:
       - uses: actions/checkout@v4
         with:
