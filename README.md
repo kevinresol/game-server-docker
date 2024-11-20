@@ -43,3 +43,7 @@ This repository provides a collection of readily deployable Docker images for de
 For a list of available build commands, run `pnpm eval --help`.
 
 > Note: This readme assumes basic familiarity with Docker and Node.js/pnpm.
+
+## License
+
+The Dockerfiles and scripts in this repository are licensed under the MIT License (see the LICENSE file). This license does not extend to the game server binaries included in the Docker images. The use of these binaries is subject to the terms of the game's end-user license agreement (EULA).

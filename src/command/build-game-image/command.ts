@@ -29,7 +29,8 @@ export default command({ description: "Build Game Server Docker Image" })
 		o.string({
 			required: true,
 			description: "The Docker namespace to use",
-			fallback: () => process.env.DOCKER_NAMESPACE,
+			fallback: () =>
+				process.env.DOCKER_NAMESPACE ?? process.env.GITHUB_REPOSITORY_OWNER,
 		})
 	)
 	.handle(handler);
