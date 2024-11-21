@@ -2,7 +2,7 @@ import { command, option as o } from "@why-ts/cli";
 
 export type BaseArgs = {
 	dataPath: string;
-	serverName: string;
+	binPath: string;
 };
 
 export default command()
