@@ -15,6 +15,7 @@ RUN ./steamcmd.sh \
 
 RUN ln -sf "$GAME_DATA_PATH" "${GAME_BIN_PATH}/saves"
 
+COPY --chown=steam:steam dist/tool.js /home/steam/tool.js
 COPY --chown=steam:steam entrypoint.sh /home/steam/entrypoint.sh
 
 WORKDIR /home/steam
