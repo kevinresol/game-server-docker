@@ -12,16 +12,20 @@ export default function ({ args }: HandlerInput<Args>) {
 	proc.stdout.pipe(process.stdout);
 	proc.stderr.pipe(process.stderr);
 
-	// Intercept SIGINT and send `autosavecancel` command to the server process
+	// Intercept SIGINT/SIGTERM and send `autosavecancel` command to the server process
 	// (autosavecancel = autosave then exit)
-	process.on("SIGINT", () => {
-		console.log("Intercepted SIGINT, sending autosavecancel command...");
-		proc.stdin.write("autosavecancel\n");
-		proc.on("exit", (code) => {
-			console.log("Server process exited with code (autocancel): ", code);
-			process.exit(code);
-		});
-	});
+	function handleSignal(name: string) {
+		return () => {
+			console.log(`Intercepted ${name}, sending autosavecancel command...`);
+			proc.stdin.write("autosavecancel\n");
+			proc.on("exit", (code) => {
+				console.log("Server process exited with code (autocancel): ", code);
+				process.exit(code);
+			});
+		};
+	}
+	process.on("SIGINT", handleSignal("SIGINT"));
+	process.on("SIGTERM", handleSignal("SIGTERM"));
 
 	return new Promise<void>((resolve, reject) => {
 		proc.on("exit", (code) => {
