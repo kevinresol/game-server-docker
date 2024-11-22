@@ -30,7 +30,6 @@ export default function ({ args }: HandlerInput<Args>) {
 	console.log(`Registering signal handlers...`);
 	process.on("SIGINT", makdSignalHandler("SIGINT"));
 	process.on("SIGTERM", makdSignalHandler("SIGTERM"));
-	process.on("SIGKILL", makdSignalHandler("SIGKILL"));
 
 	proc.stdout.pipe(process.stdout);
 	proc.stderr.pipe(process.stderr);
