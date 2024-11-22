@@ -9,14 +9,16 @@ export default function ({ args }: HandlerInput<Args>) {
 		`${args.binPath}/rocketstation_DedicatedServer.x86_64`,
 		args["--"]
 	);
-	proc.stdout.pipe(process.stdout);
-	proc.stderr.pipe(process.stderr);
 
+	let quitting = false;
 	// Intercept SIGINT/SIGTERM and send `autosavecancel` command to the server process
 	// (autosavecancel = autosave then exit)
-	function handleSignal(name: string) {
+	function makdSignalHandler(name: string) {
 		return () => {
-			console.log(`Intercepted ${name}, sending autosavecancel command...`);
+			console.log(`Intercepted ${name}`);
+			if (quitting) return;
+			console.log(`Sending autosavecancel command...`);
+			quitting = true;
 			proc.stdin.write("autosavecancel\n");
 			proc.on("exit", (code) => {
 				console.log("Server process exited with code (autocancel): ", code);
@@ -24,8 +26,14 @@ export default function ({ args }: HandlerInput<Args>) {
 			});
 		};
 	}
-	process.on("SIGINT", handleSignal("SIGINT"));
-	process.on("SIGTERM", handleSignal("SIGTERM"));
+
+	console.log(`Registering signal handlers...`);
+	process.on("SIGINT", makdSignalHandler("SIGINT"));
+	process.on("SIGTERM", makdSignalHandler("SIGTERM"));
+	process.on("SIGKILL", makdSignalHandler("SIGKILL"));
+
+	proc.stdout.pipe(process.stdout);
+	proc.stderr.pipe(process.stderr);
 
 	return new Promise<void>((resolve, reject) => {
 		proc.on("exit", (code) => {
