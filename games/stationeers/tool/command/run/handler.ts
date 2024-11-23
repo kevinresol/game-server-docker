@@ -10,26 +10,26 @@ export default function ({ args }: HandlerInput<Args>) {
 		args["--"]
 	);
 
-	let quitting = false;
+	// let quitting = false;
 	// Intercept SIGINT/SIGTERM and send `autosavecancel` command to the server process
 	// (autosavecancel = autosave then exit)
-	function makdSignalHandler(name: string) {
-		return () => {
-			console.log(`Intercepted ${name}`);
-			if (quitting) return;
-			console.log(`Sending autosavecancel command...`);
-			quitting = true;
-			proc.stdin.write("autosavecancel\n");
-			proc.on("exit", (code) => {
-				console.log("Server process exited with code (autocancel): ", code);
-				process.exit(code);
-			});
-		};
-	}
+	// function makdSignalHandler(name: string) {
+	// 	return () => {
+	// 		console.log(`Intercepted ${name}`);
+	// 		if (quitting) return;
+	// 		console.log(`Sending autosavecancel command...`);
+	// 		quitting = true;
+	// 		proc.stdin.write("autosavecancel\n");
+	// 		proc.on("exit", (code) => {
+	// 			console.log("Server process exited with code (autocancel): ", code);
+	// 			process.exit(code);
+	// 		});
+	// 	};
+	// }
 
-	console.log(`Registering signal handlers...`);
-	process.on("SIGINT", makdSignalHandler("SIGINT"));
-	process.on("SIGTERM", makdSignalHandler("SIGTERM"));
+	// console.log(`Registering signal handlers...`);
+	// process.on("SIGINT", makdSignalHandler("SIGINT"));
+	process.on("SIGTERM", () => proc.kill("SIGINT")); // forwards SIGTERM to the server process as SIGINT as Unity only hanldes SIGINT
 
 	proc.stdout.pipe(process.stdout);
 	proc.stderr.pipe(process.stderr);
