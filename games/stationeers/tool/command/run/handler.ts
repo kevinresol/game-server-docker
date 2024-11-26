@@ -1,17 +1,21 @@
 import { HandlerInput } from "@why-ts/cli";
 import { spawn } from "node:child_process";
+import { appendFile } from "node:fs/promises";
 import { match } from "ts-pattern";
 
 type Args = {
 	binPath: string;
 	logFile?: string;
 };
-export default function ({
+export default async function ({
 	args: { binPath, logFile, "--": args },
 }: HandlerInput<Args>) {
 	if (logFile) {
-		match(args.findIndex((arg) => arg.toLowerCase() === "-logfile"))
-			.with(-1, () => args.push("-logfile", logFile))
+		await match(args.findIndex((arg) => arg.toLowerCase() === "-logfile"))
+			.with(-1, () => {
+				args.push("-logfile", logFile);
+				return appendFile(logFile, ""); // make sure log file exists so we can tail it later
+			})
 			.otherwise(() => {
 				throw new Error(
 					"Do not specify -logfile manually in the rest arguments, use the --log-file flag or GAME_LOG_FILE env var instead."
