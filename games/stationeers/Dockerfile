@@ -5,6 +5,7 @@ ARG BRANCH=public
 # internal vars
 ENV GAME_BIN_PATH="/home/steam/Steam/steamapps/common/StationeersDedicatedServer"
 ENV GAME_DATA_PATH="/data"
+ENV GAME_LOG_FILE="/home/steam/stationeers.log"
 
 # install game
 RUN ./steamcmd.sh \
