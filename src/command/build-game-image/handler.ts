@@ -51,6 +51,25 @@ async function build({
 	const repository = `${namespace}/${game}-dedicated-server`;
 	const pushedTags = await listDockerTags({ repository });
 
+	const getBranchStatus = (
+		branch: string,
+		timeUpdated: Date
+	): { tags: string[]; shouldBuild: boolean } => {
+		const tags = [
+			sanitizeTag(branch),
+			...(branch === "public" ? ["latest"] : []), // also tag the public branch as latest
+		];
+		const shouldBuild =
+			force ||
+			tags.some(
+				(desired) =>
+					match(pushedTags.find(({ name }) => name === desired))
+						.with(undefined, () => true) // if the tag is not already pushed, we should build
+						.otherwise((v) => v.lastUpdated < timeUpdated) // if the tag is pushed but outdated, we should build
+			);
+		return { tags, shouldBuild };
+	};
+
 	await match(info)
 		.with({ kind: "steam" }, async ({ appId, ignoreBranches = [] }) => {
 			console.log(`== Listing Steam branches for app=${appId}...`);
@@ -60,46 +79,33 @@ async function build({
 						!passwordRequired && !ignoreBranches.includes(branch)
 				)
 				// sort image so that latest image is built first
-				.sort(
-					(a, b) => b[1].timeUpdated.getTime() - a[1].timeUpdated.getTime()
-				);
+				.sort((a, b) => b[1].timeUpdated.getTime() - a[1].timeUpdated.getTime())
+				.map(([branch, { timeUpdated }]) => ({
+					branch,
+					...getBranchStatus(branch, timeUpdated),
+				}));
 
-			console.log(
-				`== Found branches: ${branches.map(([branch]) => branch).join(", ")}`
+			console.log(`== Found branches:`);
+			branches.forEach(({ branch, tags, shouldBuild }) =>
+				console.log(
+					`   - Steam: ${branch} => Docker: ${tags.join(", ")} (${
+						shouldBuild ? "Build" : "Skip"
+					})`
+				)
 			);
 
-			for (const [branch, { timeUpdated }] of branches) {
-				const desiredTags = [
-					sanitizeTag(branch),
-					...(branch === "public" ? ["latest"] : []), // also tag the public branch as latest
-				];
+			for (const { branch, tags } of branches.filter((b) => b.shouldBuild)) {
+				console.log(`== Building ${game}: ${tags.join(", ")}`);
+				await buildGameTool(game);
 
-				const shouldBuild =
-					force ||
-					desiredTags.some(
-						(desired) =>
-							match(pushedTags.find(({ name }) => name === desired))
-								.with(undefined, () => true) // if the tag is not already pushed, we should build
-								.otherwise((v) => v.lastUpdated < timeUpdated) // if the tag is pushed but outdated, we should build
-					);
-
-				if (shouldBuild) {
-					console.log(`== Building ${game}: ${desiredTags.join(", ")}`);
-					await buildGameTool(game);
-
-					await buildAndPushImage({
-						dockerfile: getGamePath(game, "Dockerfile"),
-						context: getGamePath(game),
-						repository,
-						tags: desiredTags,
-						args: { BRANCH: branch },
-						push,
-					});
-				} else {
-					console.log(
-						`== Skipping ${game}: ${desiredTags.join(", ")} (up to date)`
-					);
-				}
+				await buildAndPushImage({
+					dockerfile: getGamePath(game, "Dockerfile"),
+					context: getGamePath(game),
+					repository,
+					tags,
+					args: { BRANCH: branch },
+					push,
+				});
 			}
 		})
 		.exhaustive();
