@@ -18,10 +18,11 @@ export default async function ({
 }
 
 export async function getSteamBuildId({ appId, branch }: Args) {
+	const MAX_ATTEMPTS = 10;
 	async function query(
-		attempts = 10
+		attempt = 1
 	): Promise<{ buildId: string; timeUpdated: Date }> {
-		if (attempts === 0) {
+		if (attempt === MAX_ATTEMPTS) {
 			throw new Error("Failed to query SteamCmd API");
 		}
 
@@ -31,8 +32,8 @@ export async function getSteamBuildId({ appId, branch }: Args) {
 
 		return match(makeSteamCmdSchema(appId).parse(await res.json()))
 			.with({ status: "failed" }, async () => {
-				await delay(1000);
-				return query(attempts - 1);
+				await delay(Math.min(120, 2 ** attempt) * 1000);
+				return query(attempt + 1);
 			})
 			.with({ status: "success" }, ({ data }) => {
 				const { buildid, timeupdated } = data[appId].depots.branches[branch];
