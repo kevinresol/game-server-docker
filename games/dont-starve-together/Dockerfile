@@ -7,11 +7,11 @@ ENV GAME_BIN_PATH="/home/steam/Steam/steamapps/common/DontStarveTogetherDedicate
 ENV GAME_DATA_PATH="/data"
 
 # install game
-# RUN ./steamcmd.sh \
-# 	+force_install_dir ${GAME_BIN_PATH} \
-# 	+login anonymous \
-# 	+app_update 343050 -beta ${BRANCH} validate \
-# 	+logoff +quit
+RUN ./steamcmd.sh \
+	+force_install_dir ${GAME_BIN_PATH} \
+	+login anonymous \
+	+app_update 343050 -beta ${BRANCH} validate \
+	+logoff +quit
 
 COPY --chown=steam:steam dist/tool.js /home/steam/tool.js
 COPY --chown=steam:steam entrypoint.sh /home/steam/entrypoint.sh
