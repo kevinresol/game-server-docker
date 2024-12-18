@@ -4,6 +4,7 @@ import * as INI from "ini";
 import path from "path";
 import { env } from "process";
 import { BaseArgs } from "../common";
+import { fileExists } from "@/common";
 
 type Args = BaseArgs & {
 	value?: Map<string, string>;
@@ -36,7 +37,8 @@ export default async function ({
 	if (envVarPrefix) {
 		for (const [key, val] of Object.entries(env)) {
 			if (key.startsWith(envVarPrefix)) {
-				set(config, key.slice(envVarPrefix.length), val ?? "");
+				const path = key.slice(envVarPrefix.length).replaceAll("__", ".");
+				set(config, path, val ?? "");
 			}
 		}
 	}
@@ -51,14 +53,6 @@ export default async function ({
 		await writeConfig(file, config);
 	} else {
 		logger.error("No changes");
-	}
-}
-
-async function fileExists(file: string) {
-	try {
-		return (await stat(file)).isFile();
-	} catch {
-		return false;
 	}
 }
 

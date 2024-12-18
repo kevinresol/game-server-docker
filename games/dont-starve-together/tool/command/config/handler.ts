@@ -4,11 +4,12 @@ import * as INI from "ini";
 import path from "path";
 import { env } from "process";
 import { BaseArgs } from "../common";
+import { fileExists } from "@/common";
 
 type Args = BaseArgs & {
 	value?: Map<string, string>;
 	envVarPrefix?: string;
-	confDir?: string;
+	confDir: string;
 };
 
 export default async function ({
@@ -29,11 +30,7 @@ export default async function ({
 
 	logger.error("Update game config");
 
-	const file = path.join(
-		dataPath,
-		confDir ?? "DoNotStarveTogether",
-		`settings.ini`
-	);
+	const file = path.join(dataPath, confDir, `settings.ini`);
 
 	logger.error(`Reading config from ${file}`);
 	const config = readConfig(file);
@@ -41,7 +38,8 @@ export default async function ({
 	if (envVarPrefix) {
 		for (const [key, val] of Object.entries(env)) {
 			if (key.startsWith(envVarPrefix)) {
-				set(config, key.slice(envVarPrefix.length), val ?? "");
+				const path = key.slice(envVarPrefix.length).replaceAll("__", ".");
+				set(config, path, val ?? "");
 			}
 		}
 	}
@@ -52,6 +50,7 @@ export default async function ({
 		}
 	}
 	if (modified) {
+		``;
 		logger.error(`Writing config to ${file}`);
 		await writeConfig(file, config);
 	} else {
@@ -59,20 +58,13 @@ export default async function ({
 	}
 }
 
-async function fileExists(file: string) {
-	try {
-		return (await stat(file)).isFile();
-	} catch {
-		return false;
-	}
-}
-
 async function readConfig(file: string) {
-	const content = await readFile(
-		(await fileExists(file)) ? file : "/home/steam/default.ini",
-		"utf-8"
-	);
-	return INI.parse(content);
+	if (await fileExists(file)) {
+		const content = await readFile(file, "utf-8");
+		return INI.parse(content);
+	} else {
+		return {};
+	}
 }
 
 async function writeConfig(file: string, config: any) {

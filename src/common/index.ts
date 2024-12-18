@@ -2,6 +2,8 @@ import { spawn } from "node:child_process";
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 
+export const isCI = process.env.CI === "true";
+
 const GAMES_PATH = "./games";
 
 export function getGamePath(game: string, ...rest: string[]) {
@@ -38,4 +40,12 @@ export function shell(command: string, args: string[] = []) {
 			}
 		});
 	});
+}
+
+export async function fileExists(file: string) {
+	try {
+		return (await stat(file)).isFile();
+	} catch {
+		return false;
+	}
 }

@@ -1,4 +1,4 @@
-import { getAllGames, getGamePath, shell } from "@/common";
+import { getAllGames, getGamePath, isCI, shell } from "@/common";
 import { HandlerInput, UsageError } from "@why-ts/cli";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -131,7 +131,7 @@ async function buildAndPushImage(args: {
 	const images = args.tags.map((tag) => `${args.repository}:${tag}`);
 
 	console.log(`== Building images: ${images.join(", ")}`);
-	await shell("df", ["-h"]);
+	// await shell("df", ["-h"]);
 	await shell("docker", [
 		"build",
 		"--platform=linux/amd64",
@@ -146,8 +146,10 @@ async function buildAndPushImage(args: {
 
 	// clean up after push
 	console.log(`== Cleaning up builder cache`);
-	await shell("docker", ["rmi", ...images]);
-	await shell("docker", ["builder", "prune", "-af"]);
+	if (isCI) {
+		await shell("docker", ["rmi", ...images]);
+		await shell("docker", ["builder", "prune", "-af"]);
+	}
 }
 
 const INFO_SCHEMA = z.discriminatedUnion("kind", [

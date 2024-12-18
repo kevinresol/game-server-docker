@@ -27,6 +27,6 @@ export default command()
 		o.string({
 			required: true,
 			description: "conf_dir",
-			fallback: () => process.env.GAME_CONF_DIR,
+			fallback: () => process.env.GAME_CONF_DIR ?? "DoNotStarveTogether",
 		})
 	);
