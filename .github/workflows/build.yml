@@ -19,6 +19,7 @@ jobs:
       matrix:
         game:
           - abiotic-factor
+          - dont-starve-together
           - project-zomboid
           - stationeers
           - valheim
