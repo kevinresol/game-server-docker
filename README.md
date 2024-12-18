@@ -5,6 +5,9 @@ This repository provides a collection of readily deployable Docker images for de
 - **Abiotic Factor**  
   [README](games/abiotic-factor/README.md) -
   [Docker Hub](https://hub.docker.com/r/kevinresol/abiotic-factor-dedicated-server/tags)
+- **Don't Starve Together**  
+  [README](games/dont-starve-together/README.md) -
+  [Docker Hub](https://hub.docker.com/r/kevinresol/dont-starve-together-dedicated-server/tags)
 - **Project Zomboid**  
   [README](games/project-zomboid/README.md) -
   [Docker Hub](https://hub.docker.com/r/kevinresol/project-zomboid-dedicated-server/tags)

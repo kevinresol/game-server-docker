@@ -21,4 +21,12 @@ export default command()
 			description: "Path to the game data folder.",
 			fallback: () => process.env.GAME_DATA_PATH,
 		})
+	)
+	.option(
+		"conf-dir",
+		o.string({
+			required: true,
+			description: "conf_dir",
+			fallback: () => process.env.GAME_CONF_DIR,
+		})
 	);
