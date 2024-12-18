@@ -12,20 +12,24 @@ export default async function ({
 	logger,
 }: HandlerInput<Args>) {
 	logger.error(`Listing Steam branches for app=${appId}...`);
-	const data = await listSteamBranches({ appId });
+	const data = await listSteamBranches({ appId }, logger);
 	logger.log(JSON.stringify(data));
 }
 
-export async function listSteamBranches({ appId }: Args) {
+export async function listSteamBranches(
+	{ appId }: Args,
+	logger: HandlerInput<Args>["logger"]
+) {
+	const MAX_ATTEMPTS = 10;
 	async function query(
-		attempts = 20
+		attempt = 1
 	): Promise<
 		Record<
 			string,
 			{ buildId: string; timeUpdated: Date; passwordRequired: boolean }
 		>
 	> {
-		if (attempts === 0) {
+		if (attempt === MAX_ATTEMPTS) {
 			throw new Error("Failed to query SteamCmd API");
 		}
 
@@ -35,8 +39,12 @@ export async function listSteamBranches({ appId }: Args) {
 
 		return match(makeSteamCmdSchema(appId).parse(await res.json()))
 			.with({ status: "failed" }, async () => {
-				await delay(5000);
-				return query(attempts - 1);
+				const wait = Math.min(120, 2 ** attempt) * 1000;
+				logger.error(
+					`Failed to query SteamCmd API. Retrying in ${wait / 1000} seconds...`
+				);
+				await delay(wait);
+				return query(attempt + 1);
 			})
 			.with({ status: "success" }, ({ data }) =>
 				Object.fromEntries(

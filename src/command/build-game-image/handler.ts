@@ -18,13 +18,14 @@ type Args = {
 
 export default async function ({
 	args: { game, all, force, namespace, push },
+	logger,
 }: HandlerInput<Args>) {
 	if (all) {
 		for (const game of await getAllGames()) {
-			await build({ game, force, namespace, push });
+			await build({ game, force, namespace, push, logger });
 		}
 	} else if (game) {
-		await build({ game, force, namespace, push });
+		await build({ game, force, namespace, push, logger });
 	} else {
 		throw new UsageError(
 			"RUNTIME_ERROR",
@@ -38,11 +39,13 @@ async function build({
 	force,
 	push,
 	namespace,
+	logger,
 }: {
 	game: string;
 	force?: boolean;
 	push?: boolean;
 	namespace: string;
+	logger: HandlerInput<Args>["logger"];
 }) {
 	const info = INFO_SCHEMA.parse(
 		JSON.parse(await readFile(getGamePath(game, "info.json"), "utf-8"))
@@ -73,7 +76,9 @@ async function build({
 	await match(info)
 		.with({ kind: "steam" }, async ({ appId, ignoreBranches = [] }) => {
 			console.log(`== Listing Steam branches for app=${appId}...`);
-			const branches = Object.entries(await listSteamBranches({ appId }))
+			const branches = Object.entries(
+				await listSteamBranches({ appId }, logger)
+			)
 				.filter(
 					([branch, { passwordRequired }]) =>
 						!passwordRequired && !ignoreBranches.includes(branch)
