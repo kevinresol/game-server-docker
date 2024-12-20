@@ -1,7 +1,7 @@
 import { fileExists } from "@/common";
 import { HandlerInput } from "@why-ts/cli";
 import { spawn } from "node:child_process";
-import { copyFile, writeFile } from "node:fs/promises";
+import { mkdir, copyFile, writeFile } from "node:fs/promises";
 import { Transform, TransformCallback } from "node:stream";
 import { BaseArgs } from "../common";
 import path from "node:path";
@@ -23,17 +23,24 @@ export default async function ({
 	const args = [
 		"-cluster",
 		cluster,
+		"-console",
 		"-monitor_parent_process",
 		process.pid.toString(),
+		"-persistent_storage_root",
+		dataPath
 	];
 
-	const caves = spawn(command, args.concat(["-shard", "Caves"]));
+	const caves = spawn(command, args.concat(["-shard", "Caves"]), {cwd: `${binPath}/bin`});
 	caves.stdout.pipe(new Prefixer("Caves")).pipe(process.stdout);
 	caves.stderr.pipe(new Prefixer("Caves")).pipe(process.stderr);
 
-	const master = spawn(command, args.concat(["-shard", "Master"]));
+	const master = spawn(command, args.concat(["-shard", "Master"]), {cwd: `${binPath}/bin`});
 	master.stdout.pipe(new Prefixer("Master")).pipe(process.stdout);
 	master.stderr.pipe(new Prefixer("Master")).pipe(process.stderr);
+
+	process.on('SIGTERM', () => {
+		master.stdin.write('c_shutdown()\n')
+	});
 
 	return new Promise<void>((resolve, reject) => {
 		master.on("exit", (code) => {
@@ -58,8 +65,9 @@ async function ensureFile({
 	cluster: string;
 	file: string;
 }) {
-	const fullPath = path.join(dataPath, cluster, file);
+	const fullPath = path.join(dataPath,'DoNotStarveTogether', cluster, file);
 	if (!(await fileExists(fullPath))) {
+		await mkdir(path.dirname(fullPath), { recursive: true });
 		await copyFile(path.join(TEMPLATE_PATH, file), fullPath);
 	}
 }
@@ -73,9 +81,10 @@ async function ensureToken({
 	cluster: string;
 	token?: string;
 }) {
-	const fullPath = path.join(dataPath, cluster, "cluster_token.txt");
+	const fullPath = path.join(dataPath, 'DoNotStarveTogether', cluster, "cluster_token.txt");
 	if (!(await fileExists(fullPath))) {
 		if (token) {
+			await mkdir(path.dirname(fullPath), { recursive: true });
 			await writeFile(fullPath, token);
 		} else {
 			throw new Error(
@@ -92,6 +101,7 @@ class Prefixer extends Transform {
 
 	_transform(chunk: Buffer, encoding: string, callback: TransformCallback) {
 		const lines = chunk.toString().split("\n");
+		if(lines[lines.length - 1].trim() === '') lines.pop();
 		lines.forEach((line) => {
 			this.push(`[${this.prefix}] ${line}\n`);
 		});
