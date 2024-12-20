@@ -22,7 +22,6 @@ RUN ./steamcmd.sh \
 	+app_update 343050 -beta ${BRANCH} validate \
 	+logoff +quit
 
-RUN mkdir -p /home/steam/.klei && ln -sf "$GAME_DATA_PATH" /home/steam/.klei/DoNotStarveTogether
 COPY --chown=steam:steam dist/tool.js /home/steam/tool.js
 COPY --chown=steam:steam entrypoint.sh /home/steam/entrypoint.sh
 COPY --chown=steam:steam config /home/steam/config

@@ -19,6 +19,7 @@ export default async function ({
 	ensureFile({ dataPath, cluster, file: `Master/server.ini` });
 	ensureFile({ dataPath, cluster, file: `Caves/server.ini` });
 
+	const cwd = `${binPath}/bin`;
 	const command = `${binPath}/bin64/dontstarve_dedicated_server_nullrenderer_x64`;
 	const args = [
 		"-cluster",
@@ -27,20 +28,20 @@ export default async function ({
 		"-monitor_parent_process",
 		process.pid.toString(),
 		"-persistent_storage_root",
-		dataPath
+		dataPath,
 	];
 
-	const caves = spawn(command, args.concat(["-shard", "Caves"]), {cwd: `${binPath}/bin`});
+	const caves = spawn(command, args.concat(["-shard", "Caves"]), { cwd });
 	caves.stdout.pipe(new Prefixer("Caves")).pipe(process.stdout);
 	caves.stderr.pipe(new Prefixer("Caves")).pipe(process.stderr);
 
-	const master = spawn(command, args.concat(["-shard", "Master"]), {cwd: `${binPath}/bin`});
+	const master = spawn(command, args.concat(["-shard", "Master"]), { cwd });
 	master.stdout.pipe(new Prefixer("Master")).pipe(process.stdout);
 	master.stderr.pipe(new Prefixer("Master")).pipe(process.stderr);
 
-	process.on('SIGTERM', () => {
-		master.stdin.write('c_shutdown()\n')
-	});
+	const handleSignal = () => master.stdin.write("c_shutdown()\n");
+	process.on("SIGTERM", handleSignal);
+	process.on("SIGINT", handleSignal);
 
 	return new Promise<void>((resolve, reject) => {
 		master.on("exit", (code) => {
@@ -65,7 +66,7 @@ async function ensureFile({
 	cluster: string;
 	file: string;
 }) {
-	const fullPath = path.join(dataPath,'DoNotStarveTogether', cluster, file);
+	const fullPath = path.join(dataPath, "DoNotStarveTogether", cluster, file);
 	if (!(await fileExists(fullPath))) {
 		await mkdir(path.dirname(fullPath), { recursive: true });
 		await copyFile(path.join(TEMPLATE_PATH, file), fullPath);
@@ -81,7 +82,12 @@ async function ensureToken({
 	cluster: string;
 	token?: string;
 }) {
-	const fullPath = path.join(dataPath, 'DoNotStarveTogether', cluster, "cluster_token.txt");
+	const fullPath = path.join(
+		dataPath,
+		"DoNotStarveTogether",
+		cluster,
+		"cluster_token.txt"
+	);
 	if (!(await fileExists(fullPath))) {
 		if (token) {
 			await mkdir(path.dirname(fullPath), { recursive: true });
@@ -101,7 +107,7 @@ class Prefixer extends Transform {
 
 	_transform(chunk: Buffer, encoding: string, callback: TransformCallback) {
 		const lines = chunk.toString().split("\n");
-		if(lines[lines.length - 1].trim() === '') lines.pop();
+		if (lines[lines.length - 1].trim() === "") lines.pop();
 		lines.forEach((line) => {
 			this.push(`[${this.prefix}] ${line}\n`);
 		});
