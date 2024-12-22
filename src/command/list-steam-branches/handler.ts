@@ -12,15 +12,19 @@ export default async function ({
 	logger,
 }: HandlerInput<Args>) {
 	logger.error(`Listing Steam branches for app=${appId}...`);
-	const data = await listSteamBranches({ appId }, logger);
+	const data = await listSteamBranches({ appId, logger });
 	logger.log(JSON.stringify(data));
 }
 
-export async function listSteamBranches(
-	{ appId }: Args,
-	logger: HandlerInput<Args>["logger"]
-) {
-	const MAX_ATTEMPTS = 10;
+export async function listSteamBranches({
+	appId,
+	maxAttempts = 10,
+	logger,
+}: {
+	appId: number;
+	maxAttempts?: number;
+	logger: HandlerInput<Args>["logger"];
+}) {
 	async function query(
 		attempt = 1
 	): Promise<
@@ -29,7 +33,7 @@ export async function listSteamBranches(
 			{ buildId: string; timeUpdated: Date; passwordRequired: boolean }
 		>
 	> {
-		if (attempt === MAX_ATTEMPTS) {
+		if (attempt === maxAttempts) {
 			throw new Error("Failed to query SteamCmd API");
 		}
 

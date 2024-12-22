@@ -79,7 +79,11 @@ async function build({
 			const branches = Object.entries(
 				await (async () => {
 					try {
-						return await listSteamBranches({ appId }, logger);
+						return await listSteamBranches({
+							appId,
+							logger,
+							maxAttempts: force ? 4 : 10,
+						});
 					} catch (e) {
 						if (force)
 							return {
