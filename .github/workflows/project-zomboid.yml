@@ -6,7 +6,7 @@ on:
       - master
     paths:
       - "./**"
-      - "!./games/**"
+      - "!games/**"
       - "games/project-zomboid/**"
 
 permissions:
