@@ -2,6 +2,9 @@
 
 set -ex
 
+# Print the Git SHA
+echo "GIT_SHA: $GIT_SHA"
+
 # modify server config file
 node /home/steam/tool.js config --template-path=/home/steam/config --file=cluster.ini --env-var-prefix=DST_CLUSTER_
 

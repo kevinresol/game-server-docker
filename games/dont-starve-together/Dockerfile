@@ -1,6 +1,9 @@
 FROM kevinresol/base-dedicated-server:latest
 
 ARG BRANCH=public
+ARG GIT_SHA
+
+LABEL git-sha=$GIT_SHA
 
 # internal vars
 ENV GAME_BIN_PATH="/home/steam/Steam/steamapps/common/DontStarveTogetherDedicatedServer"
@@ -27,5 +30,6 @@ COPY --chown=steam:steam entrypoint.sh /home/steam/entrypoint.sh
 COPY --chown=steam:steam config /home/steam/config
 
 WORKDIR /home/steam
+ENV GIT_SHA=$GIT_SHA
 
 ENTRYPOINT [ "/home/steam/entrypoint.sh" ]

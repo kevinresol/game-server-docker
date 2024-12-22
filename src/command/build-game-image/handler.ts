@@ -7,6 +7,7 @@ import { z } from "zod";
 import { buildGameTool } from "../build-game-tool/handler";
 import { listDockerTags } from "../list-docker-tags/handler";
 import { listSteamBranches } from "../list-steam-branches/handler";
+import { spawn } from "node:child_process";
 
 type Args = {
 	game?: string;
@@ -47,6 +48,7 @@ async function build({
 	namespace: string;
 	logger: HandlerInput<Args>["logger"];
 }) {
+	const gitSha = await getGitSha();
 	const info = INFO_SCHEMA.parse(
 		JSON.parse(await readFile(getGamePath(game, "info.json"), "utf-8"))
 	);
@@ -132,7 +134,7 @@ async function build({
 					context: getGamePath(game),
 					repository,
 					tags,
-					args: { BRANCH: branch },
+					args: { BRANCH: branch, GIT_SHA: gitSha },
 					push,
 				});
 			}
@@ -183,3 +185,13 @@ const INFO_SCHEMA = z.discriminatedUnion("kind", [
 		ignoreBranches: z.array(z.string()).optional(),
 	}),
 ]);
+
+async function getGitSha() {
+	const proc = spawn("git", ["rev-parse", "HEAD"]);
+	return new Promise<string>((resolve, reject) => {
+		let data = "";
+		proc.stdout.on("data", (chunk) => (data += chunk));
+		proc.stdout.on("end", () => resolve(data.trim()));
+		proc.stdout.on("error", reject);
+	});
+}
