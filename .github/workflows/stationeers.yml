@@ -1,11 +1,12 @@
 name: Stationeers
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - master
     paths:
-      - "./**"
+      - "**"
       - "!games/**"
       - "games/stationeers/**"
 

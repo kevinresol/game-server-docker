@@ -1,4 +1,4 @@
-name: Project Zomboid
+name: Valheim
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
     paths:
       - "**"
       - "!games/**"
-      - "games/project-zomboid/**"
+      - "games/valheim/**"
 
 permissions:
   actions: read
@@ -19,4 +19,4 @@ jobs:
     uses: ./.github/workflows/push.yml
     secrets: inherit
     with:
-      game: project-zomboid
+      game: valheim
