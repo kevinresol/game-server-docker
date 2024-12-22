@@ -10,17 +10,13 @@ type Args = BaseArgs;
 
 // ref: https://accounts.klei.com/assets/gamesetup/linux/run_dedicated_servers.sh
 export default async function ({
-	args: { binPath, dataPath, cluster, confDir },
+	args: { binPath, dataPath, cluster, confDir, templatePath },
 }: HandlerInput<Args>) {
-	ensureToken({
-		dataPath,
-		cluster,
-		confDir,
-		token: process.env.GAME_CLUSTER_TOKEN,
-	});
-	ensureFile({ dataPath, cluster, confDir, file: `cluster.ini` });
-	ensureFile({ dataPath, cluster, confDir, file: `Master/server.ini` });
-	ensureFile({ dataPath, cluster, confDir, file: `Caves/server.ini` });
+	const common = { templatePath, dataPath, cluster, confDir };
+	ensureToken({ ...common, token: process.env.GAME_CLUSTER_TOKEN });
+	ensureFile({ ...common, file: `cluster.ini` });
+	ensureFile({ ...common, file: `Master/server.ini` });
+	ensureFile({ ...common, file: `Caves/server.ini` });
 
 	const cwd = `${binPath}/bin`;
 	const command = `${binPath}/bin64/dontstarve_dedicated_server_nullrenderer_x64`;
@@ -61,13 +57,14 @@ export default async function ({
 	});
 }
 
-const TEMPLATE_PATH = "/home/steam/config";
 async function ensureFile({
+	templatePath,
 	dataPath,
 	cluster,
 	confDir,
 	file,
 }: {
+	templatePath: string;
 	dataPath: string;
 	confDir: string;
 	cluster: string;
@@ -76,7 +73,7 @@ async function ensureFile({
 	const fullPath = path.join(dataPath, confDir, cluster, file);
 	if (!(await fileExists(fullPath))) {
 		await mkdir(path.dirname(fullPath), { recursive: true });
-		await copyFile(path.join(TEMPLATE_PATH, file), fullPath);
+		await copyFile(path.join(templatePath, file), fullPath);
 	}
 }
 
