@@ -14,3 +14,6 @@ trap 'kill -s TERM $NODE_PID' TERM
 
 # Wait for signals
 wait $NODE_PID
+
+# Print exit code
+echo "Script exited with code $?"
