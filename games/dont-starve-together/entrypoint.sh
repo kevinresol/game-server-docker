@@ -3,7 +3,7 @@
 set -ex
 
 # modify server config file
-node /home/steam/tool.js config --file=cluster.ini --env-var-prefix=DST_CLUSTER_
+node /home/steam/tool.js config --template-path=/home/steam/config --file=cluster.ini --env-var-prefix=DST_CLUSTER_
 
 # start the server
 node ~/tool.js run "$@" &

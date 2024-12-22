@@ -5,6 +5,7 @@ import path from "path";
 import { env } from "process";
 import { BaseArgs } from "../common";
 import { fileExists } from "@/common";
+import { peek } from "@why-ts/core";
 
 type Args = BaseArgs & {
 	value?: Map<string, string>;
@@ -13,7 +14,7 @@ type Args = BaseArgs & {
 };
 
 export default async function ({
-	args: { dataPath, confDir, cluster, file, envVarPrefix, value },
+	args: { templatePath, dataPath, confDir, cluster, file, envVarPrefix, value },
 	logger,
 }: HandlerInput<Args>) {
 	let modified = false;
@@ -32,7 +33,13 @@ export default async function ({
 	const fullPath = path.join(dataPath, confDir, cluster, file);
 
 	logger.error(`Reading config from ${fullPath}`);
-	const config = readConfig({ dataPath, confDir, cluster, file });
+	const config = await readConfig({
+		templatePath,
+		dataPath,
+		confDir,
+		cluster,
+		file,
+	});
 
 	if (envVarPrefix) {
 		for (const [key, val] of Object.entries(env)) {
@@ -56,13 +63,14 @@ export default async function ({
 	}
 }
 
-const TEMPLATE_PATH = "/home/steam/config";
 async function readConfig({
+	templatePath,
 	dataPath,
 	cluster,
 	confDir,
 	file,
 }: {
+	templatePath: string;
 	dataPath: string;
 	confDir: string;
 	cluster: string;
@@ -71,11 +79,12 @@ async function readConfig({
 	try {
 		const fullPath = path.join(dataPath, confDir, cluster, file);
 		const content = await readFile(
-			(await fileExists(fullPath)) ? fullPath : path.join(TEMPLATE_PATH, file),
+			(await fileExists(fullPath)) ? fullPath : path.join(templatePath, file),
 			"utf-8"
 		);
-		return INI.parse(content);
+		return peek(INI.parse(content));
 	} catch (e) {
+		console.error(e);
 		return {};
 	}
 }

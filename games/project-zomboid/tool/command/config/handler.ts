@@ -32,7 +32,7 @@ export default async function ({
 	const file = path.join(dataPath, "Server", `${serverName}.ini`);
 
 	logger.error(`Reading config from ${file}`);
-	const config = readConfig(file);
+	const config = await readConfig(file);
 
 	if (envVarPrefix) {
 		for (const [key, val] of Object.entries(env)) {

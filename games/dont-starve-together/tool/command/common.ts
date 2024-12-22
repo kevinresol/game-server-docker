@@ -1,6 +1,7 @@
 import { command, option as o } from "@why-ts/cli";
 
 export type BaseArgs = {
+	templatePath: string;
 	binPath: string;
 	dataPath: string;
 	confDir: string;
@@ -22,6 +23,13 @@ export default command()
 			required: true,
 			description: "Path to the game data folder.",
 			fallback: () => process.env.GAME_DATA_PATH,
+		})
+	)
+	.option(
+		"template-path",
+		o.string({
+			required: true,
+			description: "Path to config templates.",
 		})
 	)
 	.option(
