@@ -40,9 +40,16 @@ export default async function ({
 	master.stdout.pipe(new Prefixer("Master")).pipe(process.stdout);
 	master.stderr.pipe(new Prefixer("Master")).pipe(process.stderr);
 
-	const handleSignal = () => master.stdin.write("c_shutdown()\n");
-	process.on("SIGTERM", handleSignal);
-	process.on("SIGINT", handleSignal);
+	let terminated = false;
+	const makeSignalHandler = (signal: string) => () => {
+		console.log(`Received signal ${signal}`);
+		if (terminated) return;
+		terminated = true;
+		console.log("Shutting down server...");
+		master.stdin.write("c_shutdown()\n");
+	};
+	process.on("SIGTERM", makeSignalHandler("SIGTERM"));
+	process.on("SIGINT", makeSignalHandler("SIGINT"));
 
 	return new Promise<void>((resolve, reject) => {
 		master.on("exit", (code) => {

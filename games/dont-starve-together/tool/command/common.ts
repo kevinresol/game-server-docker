@@ -43,8 +43,8 @@ export default command()
 	.option(
 		"cluster",
 		o.string({
-			description: "Cluster name",
 			required: true,
+			description: "Cluster name",
 			fallback: () => process.env.GAME_CLUSTER ?? "Cluster_1",
 		})
 	);
