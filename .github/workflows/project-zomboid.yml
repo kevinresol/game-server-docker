@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   build:
-    uses: ./.github/workflows/template/push.yml
+    uses: ./.github/workflows/push.yml
     secrets: inherit
     with:
       game: project-zomboid
