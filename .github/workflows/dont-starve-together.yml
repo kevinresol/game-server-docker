@@ -1,0 +1,20 @@
+name: Push
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "./**"
+      - "!./games/**"
+      - "games/dont-starve-together/**"
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  build:
+    uses: ./push.yml
+    with:
+      game: dont-starve-together

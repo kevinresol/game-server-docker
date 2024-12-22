@@ -1,10 +1,6 @@
-name: Build
+name: Schedule
 
 on:
-  workflow_dispatch:
-  push:
-    branches:
-      - master
   schedule:
     - cron: "0 * * * *"
 
@@ -48,10 +44,5 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # force build everything on code push
-      - run: pnpm eval build-game-image --game=${{ matrix.game }} --push --force
-        if: ${{ github.event_name != 'schedule' }}
-
       # build only updated games on schedule
       - run: pnpm eval build-game-image --game=${{ matrix.game }} --push
-        if: ${{ github.event_name == 'schedule' }}
