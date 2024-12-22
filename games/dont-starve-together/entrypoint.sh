@@ -10,10 +10,7 @@ node ~/tool.js run --template-path=/home/steam/config "$@" &
 NODE_PID=$!
 
 # Trap SIGTERM signal
-trap 'kill -s TERM $NODE_PID' TERM
+trap 'kill -s TERM $NODE_PID; wait $NODE_PID' TERM
 
 # Wait for signals
 wait $NODE_PID
-
-# Print exit code
-echo "Script exited with code $?"
