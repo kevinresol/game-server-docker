@@ -15,6 +15,6 @@ permissions:
 
 jobs:
   build:
-    uses: .github/workflows/push.yml
+    uses: ./.github/workflows/push.yml
     with:
       game: stationeers
