@@ -39,7 +39,7 @@ export async function listSteamBranches(
 
 		return match(makeSteamCmdSchema(appId).parse(await res.json()))
 			.with({ status: "failed" }, async () => {
-				const wait = Math.min(120, 2 ** attempt) * 1000;
+				const wait = Math.min(300, 2 ** attempt) * 1000;
 				logger.error(
 					`Failed to query SteamCmd API. Retrying in ${wait / 1000} seconds...`
 				);
