@@ -1,11 +1,12 @@
 name: Don't Starve Together
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - master
     paths:
-      - "./**"
+      - "**"
       - "!games/**"
       - "games/dont-starve-together/**"
 
