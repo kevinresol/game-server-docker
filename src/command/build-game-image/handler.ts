@@ -77,7 +77,21 @@ async function build({
 		.with({ kind: "steam" }, async ({ appId, ignoreBranches = [] }) => {
 			console.log(`== Listing Steam branches for app=${appId}...`);
 			const branches = Object.entries(
-				await listSteamBranches({ appId }, logger)
+				await (async () => {
+					try {
+						return await listSteamBranches({ appId }, logger);
+					} catch (e) {
+						if (force)
+							return {
+								public: {
+									buildId: "0",
+									timeUpdated: new Date(),
+									passwordRequired: false,
+								},
+							};
+						else throw e;
+					}
+				})()
 			)
 				.filter(
 					([branch, { passwordRequired }]) =>
