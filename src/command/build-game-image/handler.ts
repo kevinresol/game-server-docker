@@ -83,8 +83,14 @@ async function build({
 					([branch, { passwordRequired }]) =>
 						!passwordRequired && !ignoreBranches.includes(branch)
 				)
-				// sort image so that latest image is built first
-				.sort((a, b) => b[1].timeUpdated.getTime() - a[1].timeUpdated.getTime())
+				// sort image so that "public" is always first, then by timeUpdated
+				.sort(([b1, { timeUpdated: t1 }], [b2, { timeUpdated: t2 }]) =>
+					b1 === "public"
+						? -1
+						: b2 === "public"
+						? 1
+						: t2.getTime() - t1.getTime()
+				)
 				.map(([branch, { timeUpdated }]) => ({
 					branch,
 					...getBranchStatus(branch, timeUpdated),
