@@ -9,11 +9,11 @@ import { fileExists } from "@/common";
 type Args = BaseArgs & {
 	value?: Map<string, string>;
 	envVarPrefix?: string;
-	confDir: string;
+	file: string;
 };
 
 export default async function ({
-	args: { dataPath, confDir, envVarPrefix, value },
+	args: { dataPath, confDir, cluster, file, envVarPrefix, value },
 	logger,
 }: HandlerInput<Args>) {
 	let modified = false;
@@ -29,11 +29,10 @@ export default async function ({
 	}
 
 	logger.error("Update game config");
+	const fullPath = path.join(dataPath, confDir, cluster, file);
 
-	const file = path.join(dataPath, confDir, `settings.ini`);
-
-	logger.error(`Reading config from ${file}`);
-	const config = readConfig(file);
+	logger.error(`Reading config from ${fullPath}`);
+	const config = readConfig({ dataPath, confDir, cluster, file });
 
 	if (envVarPrefix) {
 		for (const [key, val] of Object.entries(env)) {
@@ -50,19 +49,33 @@ export default async function ({
 		}
 	}
 	if (modified) {
-		``;
-		logger.error(`Writing config to ${file}`);
-		await writeConfig(file, config);
+		logger.error(`Writing config to ${fullPath}`);
+		await writeConfig(fullPath, config);
 	} else {
 		logger.error("No changes");
 	}
 }
 
-async function readConfig(file: string) {
-	if (await fileExists(file)) {
-		const content = await readFile(file, "utf-8");
+const TEMPLATE_PATH = "/home/steam/config";
+async function readConfig({
+	dataPath,
+	cluster,
+	confDir,
+	file,
+}: {
+	dataPath: string;
+	confDir: string;
+	cluster: string;
+	file: string;
+}) {
+	try {
+		const fullPath = path.join(dataPath, confDir, cluster, file);
+		const content = await readFile(
+			(await fileExists(fullPath)) ? fullPath : path.join(TEMPLATE_PATH, file),
+			"utf-8"
+		);
 		return INI.parse(content);
-	} else {
+	} catch (e) {
 		return {};
 	}
 }

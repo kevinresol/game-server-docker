@@ -6,7 +6,7 @@
 docker run -d \
   -v $(pwd)/dont-starve-together:/data \
   -p 10999:10999/udp
-  [-e DST_default_server_name=<value>]
+  [-e DST_CLUSTER_NETWORK__cluster_password=<value>]
   kevinresol/dont-starve-together-dedicated-server[:<tagname>]
   [-port 10999] \
   [...]
@@ -14,7 +14,7 @@ docker run -d \
 
 ### Server Config
 
-Environment variables prefixed with `DST_` will be written to the config file before server start.
+Environment variables prefixed with `DST_CLUSTER_` will be written to the cluster's `cluster.ini` file before server start.
 
 ### Script Arguments
 

@@ -3,6 +3,8 @@ import { command, option as o } from "@why-ts/cli";
 export type BaseArgs = {
 	binPath: string;
 	dataPath: string;
+	confDir: string;
+	cluster: string;
 };
 
 export default command()
@@ -28,5 +30,13 @@ export default command()
 			required: true,
 			description: "conf_dir",
 			fallback: () => process.env.GAME_CONF_DIR ?? "DoNotStarveTogether",
+		})
+	)
+	.option(
+		"cluster",
+		o.string({
+			description: "Cluster name",
+			required: true,
+			fallback: () => process.env.GAME_CLUSTER ?? "Cluster_1",
 		})
 	);

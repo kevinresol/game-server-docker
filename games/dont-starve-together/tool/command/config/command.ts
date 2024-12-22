@@ -3,12 +3,19 @@ import baseCommand from "../common";
 import handler from "./handler";
 
 export default baseCommand
-	.meta({ description: "Update Game Config" })
+	.meta({ description: "Update ini config files" })
+	.option(
+		"file",
+		o.string({
+			required: true,
+			description: "Config file to update.",
+		})
+	)
 	.option(
 		"value",
 		o.dict({
 			description:
-				"Config values. Repeatable. (e.g. --value default_server_name=foo --value server_password=pass",
+				"Config values. Repeatable. (e.g. --value NETWORK.cluster_password=foobar --value NETWORK.cluster_name=MyServer",
 		})
 	)
 	.option(
@@ -16,7 +23,8 @@ export default baseCommand
 		o.string({
 			description:
 				"If defined, environement variables with this prefix will be set as config. (Values specified via --value will take precedence). " +
-				"Example: --env-var-prefix=DST_ will set default_server_name=foo if DST_default_server_name=foo is defined in the environment.",
+				"Example: --env-var-prefix=DST_ will set NETWORK.cluster_password=foobar if DST_NETWORK__cluster_password=foo is defined in the environment." +
+				"Double underscore __ in the environment variable name will be replaced by a dot . in the config path.",
 		})
 	)
 	.handle(handler);

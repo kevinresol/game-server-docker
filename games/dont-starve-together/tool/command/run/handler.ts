@@ -10,25 +10,30 @@ type Args = BaseArgs;
 
 // ref: https://accounts.klei.com/assets/gamesetup/linux/run_dedicated_servers.sh
 export default async function ({
-	args: { binPath, dataPath },
+	args: { binPath, dataPath, cluster, confDir },
 }: HandlerInput<Args>) {
-	const cluster = process.env.GAME_CLUSTER ?? "Cluster_1";
-
-	ensureToken({ dataPath, cluster, token: process.env.GAME_CLUSTER_TOKEN });
-	ensureFile({ dataPath, cluster, file: `cluster.ini` });
-	ensureFile({ dataPath, cluster, file: `Master/server.ini` });
-	ensureFile({ dataPath, cluster, file: `Caves/server.ini` });
+	ensureToken({
+		dataPath,
+		cluster,
+		confDir,
+		token: process.env.GAME_CLUSTER_TOKEN,
+	});
+	ensureFile({ dataPath, cluster, confDir, file: `cluster.ini` });
+	ensureFile({ dataPath, cluster, confDir, file: `Master/server.ini` });
+	ensureFile({ dataPath, cluster, confDir, file: `Caves/server.ini` });
 
 	const cwd = `${binPath}/bin`;
 	const command = `${binPath}/bin64/dontstarve_dedicated_server_nullrenderer_x64`;
 	const args = [
-		"-cluster",
-		cluster,
 		"-console",
 		"-monitor_parent_process",
 		process.pid.toString(),
 		"-persistent_storage_root",
 		dataPath,
+		"-conf_dir",
+		confDir,
+		"-cluster",
+		cluster,
 	];
 
 	const caves = spawn(command, args.concat(["-shard", "Caves"]), { cwd });
@@ -60,13 +65,15 @@ const TEMPLATE_PATH = "/home/steam/config";
 async function ensureFile({
 	dataPath,
 	cluster,
+	confDir,
 	file,
 }: {
 	dataPath: string;
+	confDir: string;
 	cluster: string;
 	file: string;
 }) {
-	const fullPath = path.join(dataPath, "DoNotStarveTogether", cluster, file);
+	const fullPath = path.join(dataPath, confDir, cluster, file);
 	if (!(await fileExists(fullPath))) {
 		await mkdir(path.dirname(fullPath), { recursive: true });
 		await copyFile(path.join(TEMPLATE_PATH, file), fullPath);
@@ -76,18 +83,15 @@ async function ensureFile({
 async function ensureToken({
 	dataPath,
 	cluster,
+	confDir,
 	token,
 }: {
 	dataPath: string;
 	cluster: string;
+	confDir: string;
 	token?: string;
 }) {
-	const fullPath = path.join(
-		dataPath,
-		"DoNotStarveTogether",
-		cluster,
-		"cluster_token.txt"
-	);
+	const fullPath = path.join(dataPath, confDir, cluster, "cluster_token.txt");
 	if (!(await fileExists(fullPath))) {
 		if (token) {
 			await mkdir(path.dirname(fullPath), { recursive: true });
