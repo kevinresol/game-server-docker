@@ -29,3 +29,4 @@ COPY --chown=steam:steam config /home/steam/config
 WORKDIR /home/steam
 
 ENTRYPOINT [ "/home/steam/entrypoint.sh" ]
+

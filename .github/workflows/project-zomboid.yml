@@ -1,4 +1,4 @@
-name: Push
+name: Project Zomboid
 
 on:
   push:
@@ -15,6 +15,7 @@ permissions:
 
 jobs:
   build:
-    uses: ./.github/workflows/push.yml
+    uses: ./.github/workflows/template/push.yml
+    secrets: inherit
     with:
       game: project-zomboid

@@ -1,4 +1,4 @@
-name: Push
+name: Don't Starve Together
 
 on:
   push:
@@ -15,6 +15,7 @@ permissions:
 
 jobs:
   build:
-    uses: ./.github/workflows/push.yml
+    uses: ./.github/workflows/template/push.yml
+    secrets: inherit
     with:
       game: dont-starve-together
