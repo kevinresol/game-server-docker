@@ -33,8 +33,8 @@ export default async function ({
 	];
 
 	const caves = spawn(command, args.concat(["-shard", "Caves"]), { cwd });
-	caves.stdout.pipe(new Prefixer("Caves")).pipe(process.stdout);
-	caves.stderr.pipe(new Prefixer("Caves")).pipe(process.stderr);
+	caves.stdout.pipe(new Prefixer("Caves ")).pipe(process.stdout);
+	caves.stderr.pipe(new Prefixer("Caves ")).pipe(process.stderr);
 
 	const master = spawn(command, args.concat(["-shard", "Master"]), { cwd });
 	master.stdout.pipe(new Prefixer("Master")).pipe(process.stdout);

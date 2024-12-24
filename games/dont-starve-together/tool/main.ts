@@ -11,6 +11,5 @@ import runCommand from "./command/run/command";
 		.run(process.argv.slice(2))
 		.catch(() => process.exit(1));
 
-	console.log(output);
 	process.exit(0);
 })();
