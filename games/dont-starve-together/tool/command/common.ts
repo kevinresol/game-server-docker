@@ -1,7 +1,6 @@
 import { command, option as o } from "@why-ts/cli";
 
 export type BaseArgs = {
-	templatePath: string;
 	binPath: string;
 	dataPath: string;
 	confDir: string;

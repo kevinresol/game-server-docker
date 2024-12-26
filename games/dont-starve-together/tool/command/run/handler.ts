@@ -6,7 +6,9 @@ import { Transform, TransformCallback } from "node:stream";
 import { BaseArgs } from "../common";
 import path from "node:path";
 
-type Args = BaseArgs;
+type Args = BaseArgs & {
+	templatePath: string;
+};
 
 // ref: https://accounts.klei.com/assets/gamesetup/linux/run_dedicated_servers.sh
 export default async function ({

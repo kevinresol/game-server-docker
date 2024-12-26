@@ -11,6 +11,7 @@ type Args = BaseArgs & {
 	value?: Map<string, string>;
 	envVarPrefix?: string;
 	file: string;
+	templatePath: string;
 };
 
 export default async function ({
