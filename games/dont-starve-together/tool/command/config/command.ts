@@ -27,4 +27,11 @@ export default baseCommand
 				"Double underscore __ in the environment variable name will be replaced by a dot . in the config path.",
 		})
 	)
+	.option(
+		"template-path",
+		o.string({
+			required: true,
+			description: "Path to config templates.",
+		})
+	)
 	.handle(handler);

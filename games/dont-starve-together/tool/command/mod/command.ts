@@ -3,12 +3,12 @@ import baseCommand from "../common";
 import handler from "./handler";
 
 export default baseCommand
-	.meta({ description: "Run the game." })
+	.meta({ description: "Install mods" })
 	.option(
-		"template-path",
+		"ids",
 		o.string({
-			required: true,
-			description: "Path to config templates.",
+			description: "Comma separated list of mod ids",
+			fallback: () => process.env.DST_MOD_IDS,
 		})
 	)
 	.handle(handler);

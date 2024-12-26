@@ -26,13 +26,6 @@ export default command()
 		})
 	)
 	.option(
-		"template-path",
-		o.string({
-			required: true,
-			description: "Path to config templates.",
-		})
-	)
-	.option(
 		"conf-dir",
 		o.string({
 			required: true,
