@@ -48,3 +48,4 @@ jobs:
 
       # build only updated games on schedule
       - run: pnpm eval build-game-image --game=${{ matrix.game }} --push
+        continue-on-error: true
