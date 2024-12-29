@@ -31,6 +31,8 @@ export default async function ({
 }
 
 export async function buildGameTool(game: string) {
+	console.log(`Building game tool: ${game}`);
+
 	const outputJs = getGameToolOutput(game);
 	const outputFolder = path.dirname(outputJs);
 
