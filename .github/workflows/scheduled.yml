@@ -2,6 +2,12 @@ name: Scheduled
 
 on:
   workflow_dispatch:
+    inputs:
+      force:
+        description: "Force rebuilding game images"
+        type: boolean
+        default: false
+        required: false
   schedule:
     - cron: "0 * * * *"
 
@@ -45,5 +51,5 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       # build only updated games on schedule
-      - run: pnpm eval build-game-image --game=${{ matrix.game }} --push
+      - run: pnpm eval build-game-image --game=${{ matrix.game }} --push ${{ inputs.force && '--force' || '' }}
         continue-on-error: true
