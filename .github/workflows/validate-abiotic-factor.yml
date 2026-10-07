@@ -1,0 +1,30 @@
+name: Validate Abiotic Factor image (no publish)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - investigate/abiotic-factor-no-push
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 8
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build Abiotic Factor image without publishing
+        run: pnpm eval build-game-image --game=abiotic-factor --force
