@@ -8,7 +8,7 @@ ARG PACKAGES=""
 
 # install additional packages as root
 USER root
-RUN curl -o- https://deb.nodesource.com/setup_22.x | bash
+RUN curl -o- https://deb.nodesource.com/setup_24.x | bash
 RUN apt-get install -qqy nodejs ${PACKAGES} \
 	&& apt-get autoremove -qqy \
 	&& rm -rf /var/lib/apt/lists/*
