@@ -2,6 +2,7 @@ import { HandlerInput } from "@why-ts/cli";
 import { spawn } from "node:child_process";
 import { appendFile } from "node:fs/promises";
 import { match } from "ts-pattern";
+import fs from "node:fs";
 
 type Args = {
 	binPath: string;
@@ -18,7 +19,7 @@ export default async function ({
 			})
 			.otherwise(() => {
 				throw new Error(
-					"Do not specify -logfile manually in the rest arguments, use the --log-file flag or GAME_LOG_FILE env var instead."
+					"Do not specify -logfile manually in the rest arguments, use the --log-file flag or GAME_LOG_FILE env var instead.",
 				);
 			});
 	}
@@ -69,7 +70,17 @@ export default async function ({
 		proc.on("exit", (code) => {
 			console.log("Server process exited with code: ", code);
 
-			if (log) log.kill();
+			try {
+				if (log) log.kill();
+			} catch (e) {
+				console.error(`Failed to kill the log tail process: ${e}`);
+			}
+
+			try {
+				if (logFile) fs.unlinkSync(logFile); // delete the log file after the server process exits
+			} catch (e) {
+				console.error(`Failed to delete the log file: ${e}`);
+			}
 
 			if (code === 0) {
 				resolve();
