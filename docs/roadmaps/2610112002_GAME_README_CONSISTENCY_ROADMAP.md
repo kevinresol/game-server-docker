@@ -84,7 +84,7 @@ Drafts are not execute-ready until the user explicitly approves Executable.
 
 ### T1 — Establish baseline and align Abiotic Factor / Don't Starve Together
 
-**Status:** in_progress
+**Status:** approved
 
 **Depends on:** none
 
@@ -100,8 +100,8 @@ Drafts are not execute-ready until the user explicitly approves Executable.
 #### Reviewer checklist
 
 - [x] Confirm the matrix distinguishes shared applicable topics from image-specific or unsupported behavior, with evidence for each material claim.
-- [ ] Confirm both READMEs follow the recorded baseline and project rules without losing accurate game-specific guidance.
-- [ ] Check command examples for concrete values, optional brackets, consistent Markdown, and image-specific accuracy.
+- [x] Confirm both READMEs follow the recorded baseline and project rules without losing accurate game-specific guidance.
+- [x] Check command examples for concrete values, optional brackets, consistent Markdown, and image-specific accuracy.
 
 #### Agent log
 
@@ -156,6 +156,34 @@ Verification:
 - Confirmed the DST template ports (`11000`, `11001`, `27018`, `27019`, `8768`, `8769`) and that its wrapper does not append arbitrary Docker arguments to the game processes.
 - Confirmed both target README structures, image references, `/data` mounts, and argument/configuration claims. The Abiotic example issue above prevents full checklist approval.
 - `git diff --check` passes. No product files were edited and no commit was created.
+
+#### Implementor — revise 1 — 2026-10-23
+
+Addressed the reviewer's single finding. In `games/abiotic-factor/README.md`, changed `[-SteamServerName=Abiotic Example]` to `[-SteamServerName=AbioticExample]`. The value is now a single shell word and keeps the optional-bracket convention.
+
+Re-scanned both T1 READMEs for unquoted spaces in values, abstract placeholders, missing line-continuation backslashes, and inconsistent fences. Found no other instances and made no other changes. Both files still match the recorded T1 baseline.
+
+Verification: `git --no-pager diff --check` is clean. Files edited: `games/abiotic-factor/README.md` only. No image builds or runs.
+
+Residual notes (out of scope): the trailing `[...]` line in the Abiotic example and unquoted `$(pwd)` volume paths in both examples.
+
+#### Reviewer — attempt 2 — 2026-10-23
+
+Verdict: approve
+
+Findings: none critical/important. The prior finding is resolved: Abiotic's `[-SteamServerName=AbioticExample]` is now a single shell word and keeps the optional-bracket convention. No other unquoted-space values, abstract placeholders, missing `\` continuations, or fence inconsistencies in either README.
+
+Verification: Spot-checked both READMEs against `games/abiotic-factor` and `games/dont-starve-together` Dockerfiles, entrypoints, config templates and tool sources.
+- Abiotic: `"$@"` forwarded to the Wine-launched executable; `/data` is symlinked to `AbioticFactor/Saved`; ports 7777/udp and 27015/udp match the upstream quickstart's `-PORT`/`-QueryPort` values.
+- DST: ports 11000/11001, 27018/27019, 8768/8769 match templates; run args are fixed (no arbitrary game-arg forwarding); `GAME_CLUSTER_TOKEN` is written to `/data/DoNotStarveTogether/Cluster_1/cluster_token.txt` only if missing; `DST_CLUSTER_` `__` -> `.` mapping, `DST_MOD_IDS`, `GAME_CONF_DIR`/`GAME_CLUSTER` defaults, and `-persistent_storage_root` = `/data` all confirmed.
+- `git --no-pager diff --check` is clean.
+
+Residual risks (non-blocking):
+- `-tcp` in the Abiotic example is retained from the original README; the linked quickstart does not document it and only UDP ports are published, so TCP-port need is unverified.
+- Unquoted `$(pwd)` in `-v` in both examples.
+- DST example omits an optional `DST_MOD_IDS` / Compose `environment` mention.
+
+Orchestrator: Pack two-pack (coder -> reviewer), end-qa skipped (not six-pack, no `end-qa: true`, no user request). T1 approved; committed locally with the two READMEs. T2/T3/T4 now eligible and run in parallel worktrees.
 
 ---
 

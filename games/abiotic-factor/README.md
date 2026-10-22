@@ -2,25 +2,25 @@
 
 ## Run Server
 
-```
+```sh
 docker run -d \
   -v $(pwd)/abiotic:/data \
   -p 7777:7777/udp -p 27015:27015/udp \
-  kevinresol/abiotic-factor-dedicated-server[:<tagname>]
-  [-SteamServerName=<value>] \
-  [-PORT=<value>] \
-  [-QueryPort=<value>] \
-  [-ServerPassword=<value>] \
+  kevinresol/abiotic-factor-dedicated-server:latest \
+  [-SteamServerName=AbioticExample] \
+  [-PORT=7777] \
+  [-QueryPort=27015] \
+  [-ServerPassword=change-this-password] \
   [-tcp] \
   [...]
 ```
 
-### Script Arguments
+## Script Arguments
 
-Additional args after the image name (such as `-SteamServerName` in the example) will be forwarded to the server executable. See more in the [office doc](https://github.com/DFJacob/AbioticFactorDedicatedServer/wiki/Guide-%E2%80%90-Quickstart).
+Arguments after the image name are forwarded to the Abiotic Factor server executable. The example shows common optional server arguments; omit any that you do not need. See the [Abiotic Factor dedicated server guide](https://github.com/DFJacob/AbioticFactorDedicatedServer/wiki/Guide-%E2%80%90-Quickstart) for supported game arguments.
 
-If using docker-compose, define any additional arguments in the command section of your service definition.
+With Docker Compose, put the same optional server arguments in the service's `command` list.
 
-### Volumes
+## Volumes
 
-Mounting a volume with your server save files is essential. This is done using the `-v` flag in `docker run` or the `volumes` field in docker-compose. The volume is mapped to the container's `/data` directory.
+Mount a persistent volume at `/data` so server saves survive container replacement. In Docker Compose, use the service's `volumes` field to map a host directory such as `./abiotic` to `/data`.
