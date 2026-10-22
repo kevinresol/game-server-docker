@@ -249,7 +249,7 @@ Verdict: approve. The paced save is on disk at `/data/stnspike1/stnspike1.save` 
 
 ### S2 — `kernel32` stub and `poll` throttle library
 
-**Status:** pending
+**Status:** approved
 
 **Depends on:** S1 approved
 
@@ -257,28 +257,36 @@ Verdict: approve. The paced save is on disk at `/data/stnspike1/stnspike1.save` 
 
 #### Implementor checklist
 
-- [ ] Implement `SetConsoleOutputCP` and `SetConsoleCP` as no-ops returning `1`, with the signatures the game uses (`uint32_t` argument).
-- [ ] Add any additional Win32 symbols S1 found to be required, and nothing else.
-- [ ] Implement the `poll()` interposer exactly as specified in the CPU throttle decision (only `nfds == 1`, `fd == 0`, `timeout == 0` is altered; everything else forwards to libc via `dlsym(RTLD_NEXT, "poll")`; thread-safe, no allocation). If S1 selected another syscall (`ppoll`/`select`), interpose that one instead and say so in the file header.
-- [ ] Compile with `-shared -fPIC -O2 -Wall -Wextra -Werror` in a throwaway `gcc` container and confirm the exported symbols appear in `nm -D` output.
-- [ ] Add a small standalone test (shell + tiny C driver compiled in the same container; the driver may live inline in the Agent log rather than the repo) showing `poll(fd 0, timeout 0)` blocks about the substituted timeout while other `poll` calls are unchanged; paste the output.
-- [ ] Add a header comment stating why the library exists and linking to the decompile finding.
+- [x] Implement `SetConsoleOutputCP` and `SetConsoleCP` as no-ops returning `1`, with the signatures the game uses (`uint32_t` argument).
+- [x] Add any additional Win32 symbols S1 found to be required, and nothing else.
+- [x] Implement the `poll()` interposer exactly as specified in the CPU throttle decision (only `nfds == 1`, `fd == 0`, `timeout == 0` is altered; everything else forwards to libc via `dlsym(RTLD_NEXT, "poll")`; thread-safe, no allocation). If S1 selected another syscall (`ppoll`/`select`), interpose that one instead and say so in the file header.
+- [x] Compile with `-shared -fPIC -O2 -Wall -Wextra -Werror` in a throwaway `gcc` container and confirm the exported symbols appear in `nm -D` output.
+- [x] Add a small standalone test (shell + tiny C driver compiled in the same container; the driver may live inline in the Agent log rather than the repo) showing `poll(fd 0, timeout 0)` blocks about the substituted timeout while other `poll` calls are unchanged; paste the output.
+- [x] Add a header comment stating why the library exists and linking to the decompile finding.
 
 #### Reviewer checklist
 
-- [ ] Exported symbol names and return type match the P/Invoke usage (`bool` marshalled as non-zero success).
-- [ ] The interposer cannot alter any call except the exact fd-0 zero-timeout case, and cannot recurse.
-- [ ] No scope creep beyond the symbols justified by S1 evidence.
+- [x] Exported symbol names and return type match the P/Invoke usage (`bool` marshalled as non-zero success).
+- [x] The interposer cannot alter any call except the exact fd-0 zero-timeout case, and cannot recurse.
+- [x] No scope creep beyond the symbols justified by S1 evidence.
 
 #### Agent log
 
-<!-- implementor / reviewer append below -->
+Pack four-pack. Coder starting 2026-10-23 in worktree `roadmap/stationeers-console-shim/S2`. Interpose `select`, not `poll`. No extra Win32 symbols.
+
+**Implementor — S2 — 2026-10-23.** `games/stationeers/shim/kernel32_shim.c` only, uncommitted, worktree `roadmap/stationeers-console-shim/S2`. Exports `SetConsoleOutputCP` and `SetConsoleCP` (`uint32_t` in, return 1) and nothing else. Interposes `select` and `pselect`: only `nfds==1`, read fd 0 set, NULL write and except, and a zero timeout is replaced with 10 ms (`timeval` `{0,10000}` / `timespec` `{0,10000000}`) via `dlsym(RTLD_NEXT)`. Other calls forward unchanged. Pointers resolved in a constructor. Throwaway `gcc:13` (`stn-s2-gcc-throwaway`, `--rm`): `gcc -shared -fPIC -O2 -Wall -Wextra -Werror` clean. `nm -D` defined symbols: `SetConsoleCP`, `SetConsoleOutputCP`, `pselect`, `select`. Preloaded `select(fd 0, timeout 0)` measured 10234, 10487, 10376, 10252, 10278 µs; caller's `timeval` stayed `{0,0}`. Other shapes (empty read set, non-NULL write or except, extra fd, 1 ms, 50 ms, ready fd 0) stayed unthrottled. `pselect` zero timeout 10223 µs. Both console calls returned 1. `failures=0`. The `.so` imports `dlsym@GLIBC_2.34`; S4 must rebuild on the game image's glibc. `stationeers` stayed exited at `2026-10-22T11:39:53.851256288Z`.
+
+**Cleaner — S2 — 2026-10-23.** No changes. `kernel32_shim.c` already matches the S1 predicate and the two Win32 stubs. The gcc container was not re-run.
+
+#### Reviewer — S2 — 2026-10-23
+
+Verdict: approve. `kernel32_shim.c` exports `SetConsoleOutputCP` and `SetConsoleCP` (`uint32_t` in, `int` 1 out) and interposes `select` and `pselect` only for `nfds==1`, read fd 0, NULL write and except, zero timeout, substituting a stack 10 ms timeout via the constructor-cached `dlsym(RTLD_NEXT)` pointer. Other call shapes are forwarded and the hook cannot recurse. Cleaner made no changes. Residual: S4 must rebuild this source on the game image's glibc. The gcc:13 test `.so` imports `dlsym@GLIBC_2.34` and is not the image binary. If `dlsym` failed, `select` and `pselect` would return `ENOSYS`.
 
 ---
 
 ### S3 — `stn-pty` PTY bridge
 
-**Status:** pending
+**Status:** in_progress
 
 **Depends on:** S1 approved (terminal settings and Enter byte are fixed by S1; the CLI contract is frozen in Decisions)
 
@@ -301,7 +309,7 @@ Verdict: approve. The paced save is on disk at `/data/stnspike1/stnspike1.save` 
 
 #### Agent log
 
-<!-- implementor / reviewer append below -->
+Pack four-pack. Coder starting 2026-10-23 in worktree `roadmap/stationeers-console-shim/S3`. Enter byte is `\n`. Leave kernel terminal defaults; do not call `cfmakeraw`.
 
 ---
 
@@ -336,7 +344,7 @@ Verdict: approve. The paced save is on disk at `/data/stnspike1/stnspike1.save` 
 
 ### S5 — Wrapper: spawn through `stn-pty`, tee, log-flag rules
 
-**Status:** pending
+**Status:** in_progress
 
 **Depends on:** S1 approved (uses the frozen helper contract)
 
@@ -364,7 +372,7 @@ Verdict: approve. The paced save is on disk at `/data/stnspike1/stnspike1.save` 
 
 #### Agent log
 
-<!-- implementor / reviewer append below -->
+Pack four-pack. Coder starting 2026-10-23 in worktree `roadmap/stationeers-console-shim/S5`. Helper contract is frozen. Do not tail `Player.log` here.
 
 ---
 
