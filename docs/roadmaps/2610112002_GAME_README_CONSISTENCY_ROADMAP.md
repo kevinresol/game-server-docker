@@ -1,6 +1,6 @@
 # Game Server README Consistency — Task Map
 
-**Status:** Draft — not Executable.
+**Status:** Ready — Executable.
 
 ## Goal (locked)
 
@@ -76,7 +76,7 @@ Then the catalog includes a Space Engineers entry linking to that guide using th
 
 ## Human gate / Executable
 
-- [ ] User explicitly approves this roadmap as **Executable** before any implementor begins work.
+- [x] User explicitly approves this roadmap as **Executable** before any implementor begins work.
 
 Drafts are not execute-ready until the user explicitly approves Executable.
 
@@ -84,7 +84,7 @@ Drafts are not execute-ready until the user explicitly approves Executable.
 
 ### T1 — Establish baseline and align Abiotic Factor / Don't Starve Together
 
-**Status:** pending
+**Status:** in_progress
 
 **Depends on:** none
 
@@ -92,20 +92,70 @@ Drafts are not execute-ready until the user explicitly approves Executable.
 
 #### Implementor checklist
 
-- [ ] Review all six existing game READMEs and the relevant implementation/configuration files for all seven games to inventory documented topics and identify which topics apply to each image.
-- [ ] Record a topic-to-game applicability matrix in this task's Agent log. Include evidence or a clear not-applicable reason for image references/tags, ports, argument behavior, persistent volumes/save paths, configuration/environment variables, compose guidance, startup caveats, and documentation links.
-- [ ] Record the shared section order, heading hierarchy, command-fence/line-continuation style, and example-value/optional-argument conventions in the Agent log for T2–T4 to follow.
-- [ ] Update only the two listed READMEs to match the baseline and include equivalent applicable content, verified against each image.
+- [x] Review all six existing game READMEs and the relevant implementation/configuration files for all seven games to inventory documented topics and identify which topics apply to each image.
+- [x] Record a topic-to-game applicability matrix in this task's Agent log. Include evidence or a clear not-applicable reason for image references/tags, ports, argument behavior, persistent volumes/save paths, configuration/environment variables, compose guidance, startup caveats, and documentation links.
+- [x] Record the shared section order, heading hierarchy, command-fence/line-continuation style, and example-value/optional-argument conventions in the Agent log for T2–T4 to follow.
+- [x] Update only the two listed READMEs to match the baseline and include equivalent applicable content, verified against each image.
 
 #### Reviewer checklist
 
-- [ ] Confirm the matrix distinguishes shared applicable topics from image-specific or unsupported behavior, with evidence for each material claim.
+- [x] Confirm the matrix distinguishes shared applicable topics from image-specific or unsupported behavior, with evidence for each material claim.
 - [ ] Confirm both READMEs follow the recorded baseline and project rules without losing accurate game-specific guidance.
 - [ ] Check command examples for concrete values, optional brackets, consistent Markdown, and image-specific accuracy.
 
 #### Agent log
 
 <!-- implementor / reviewer append below -->
+
+#### Implementor — 2026-10-11
+
+Status set to `in_progress`. The requested coder instruction file `/Users/kevin/.cursor/agents/coder.md` was not present, so this work followed the repository `AGENTS.md` and the locked roadmap decisions.
+
+Baseline for T2–T4:
+
+- Every guide uses `# Game/Server title`, then `## Run Server`, `## Script Arguments`, supported `## Configuration` guidance when applicable, and `## Volumes`.
+- Use `sh` fences for shell commands, one command component per continued line, and a trailing `\` on every continued line. Keep optional command components and arguments in square brackets.
+- Use concrete examples (`:latest`, numeric ports, representative server names/passwords/IDs) rather than `<value>` or `<tagname>` placeholders. Explain Docker Compose as the equivalent `command`/`volumes` configuration when the image supports the same behavior.
+- Keep game links in the relevant guide; link text should describe the destination. Do not add configuration sections for unsupported behavior.
+
+Applicability matrix and evidence:
+
+| Topic | Abiotic Factor | Don't Starve Together | Project Zomboid | Satisfactory | Stationeers | Valheim | Space Engineers |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Image reference/tag | `kevinresol/abiotic-factor-dedicated-server:latest`; existing guide had the repository name and an abstract tag placeholder. | `kevinresol/dont-starve-together-dedicated-server:latest`; existing guide had the repository name and an abstract tag placeholder. | `kevinresol/project-zomboid-dedicated-server`; existing README is the source for the published repository name; tag convention needs cleanup in T2. | `kevinresol/satisfactory-factor-dedicated-server`; existing README is the source for the published repository name; tag convention needs cleanup in T2. | `kevinresol/stationeers-dedicated-server`; existing README is the source for the published repository name; tag convention needs cleanup in T3. | `kevinresol/valheim-dedicated-server`; existing README is the source for the published repository name; tag convention needs cleanup in T3. | No README or published image reference established; T4 must verify from repository/image metadata. |
+| Ports | README and existing example: `7777/udp`, `27015/udp`; no port rewriting in `entrypoint.sh`, which directly starts the executable. | Templates define `Master` `11000/udp`, `Caves` `11001/udp`, Steam master ports `27018/udp` and `27019/udp`, and authentication ports `8768/udp` and `8769/udp`; `entrypoint.sh` runs the wrapper without changing them. The old `10999` example was not supported by the checked-in templates. | Existing README documents `16261/udp`, `16262/udp`, optional `27015/tcp`; T2 must verify against startup/config behavior. | Existing README documents `7777/udp`, `27015/udp`; T2 must verify against image behavior. | Existing README documents `7777/udp`, `27015/udp`; T3 must verify against implementation/authoritative docs. | Existing README documents `2456/udp`, `2457/udp`; Dockerfile sets `SteamAppId` and entrypoint starts the server; T3 must verify any additional port guidance. | No README; T4 must inspect implementation and authoritative docs. |
+| Argument behavior | `entrypoint.sh` invokes `AbioticFactorServer-Win64-Shipping.exe "$@"`; arbitrary Docker arguments are forwarded. | `entrypoint.sh` invokes `tool.js run`; `run/handler.ts` constructs fixed Master/Caves arguments and does not append arbitrary game arguments. Document non-forwarding and use supported environment/config options. | `entrypoint.sh` invokes `start-server.sh ... "$@"`; arbitrary arguments are forwarded. | `entrypoint.sh` invokes `FactoryServer.sh "$@"`; arbitrary arguments are forwarded. | `entrypoint.sh` invokes `tool.js run -- "$@"`; wrapper behavior must remain verified by T3. | `entrypoint.sh` invokes `valheim_server.x86_64 -savedir ... "$@"`; arbitrary arguments are forwarded. | `entrypoint.sh` invokes the executable with fixed arguments and no `"$@"`; T4 must explicitly document non-forwarding. |
+| Persistent volume/save path | Dockerfile sets `GAME_DATA_PATH=/data` and symlinks `AbioticFactor/Saved` to it; `/data` is the persistent save path. | Dockerfile sets `GAME_DATA_PATH=/data`; wrapper passes it as `-persistent_storage_root`; cluster files and saves live under `/data/<conf-dir>/<cluster>`. | Dockerfile sets `GAME_DATA_PATH=/data`; entrypoint passes `-cachedir=/data`; T2 must preserve the existing save/config distinction. | Dockerfile symlinks both game Saved locations to `/data`; existing `/data` mount is applicable. | Dockerfile symlinks the game `saves` directory to `/data`; existing `/data` mount is applicable. | Entrypoint passes `/data` as `-savedir`; existing `/data` mount is applicable. | Dockerfile sets `GAME_DATA_PATH=/data`; entrypoint starts Wine with `-path Z:\\data`; T4 must verify the host mount and save layout. |
+| Configuration/environment variables | No helper/config tool or supported configuration environment variables; only `GAME_BIN_PATH`/`GAME_DATA_PATH` are internal Dockerfile variables. | `DST_CLUSTER_*` updates `cluster.ini`; `GAME_CLUSTER_TOKEN` creates the required token; `DST_MOD_IDS` generates mod setup; `GAME_CONF_DIR`/`GAME_CLUSTER` select wrapper paths. Config templates are under `config/`. | `PZ_*` updates config via the helper; `SERVER_NAME` selects the server name; T2 must verify documented defaults and `GAME_DATA_PATH`. | No helper/config environment support found; configuration is performed through the in-game Server Manager as the existing README states. | No config environment support found in inspected tool/entrypoint; T3 must verify any game-side config guidance. | No config environment support found in inspected Dockerfile/entrypoint/tool. | No helper/config environment support found in inspected Dockerfile/entrypoint/tool; T4 must verify. |
+| Compose guidance | Applicable: Compose `command` forwards optional server args and `volumes` maps a host directory to `/data`. | Applicable for environment variables and `volumes`; arbitrary game args must not be described as forwarded. | Applicable: existing README's `command`/`volumes` guidance matches entrypoint behavior; T2 to align wording. | Applicable for `command`/`volumes`; T2 to align wording. | Applicable for `command`/`volumes`; T3 to align wording. | Applicable for `command`/`volumes`; T3 to align wording. | T4 to add only after implementation verification. |
+| Startup caveats | None beyond persistent `/data`; Windows server runs through Wine in `entrypoint.sh`. | First run requires `GAME_CLUSTER_TOKEN`; wrapper copies missing `cluster.ini`/shard templates, starts both shards, and handles SIGTERM. Mods require enabling generated setup in shard `modoverrides.lua`. | Existing README notes first-run admin password requirement; T2 must verify. | Existing README directs initial setup through in-game Server Manager. | Wrapper manages a child process and signal handling; T3 must verify any setup caveats. | No additional startup caveat found in entrypoint. | Fixed Wine startup flags and no argument forwarding; T4 must document verified caveats. |
+| Documentation links | Existing Abiotic Factor dedicated-server quickstart link retained and renamed descriptively. | Existing dedicated-server guide retained; mod handler points to Klei's forum guide, which should be considered if T4 needs mod-link wording. | Existing startup-parameter link retained for T2 verification. | Existing dedicated-server link retained for T2 verification. | Existing dedicated-server guide retained for T3 verification. | Existing dedicated-server links retained for T3 verification. | T4 must add an authoritative link after verification. |
+
+Evidence reviewed:
+
+- All six existing game READMEs.
+- `Dockerfile` and `entrypoint.sh` for all seven game directories.
+- Wrapper/tool sources for all seven directories, including DST `config`, `run`, and `mod` commands.
+- DST templates `config/cluster.ini`, `config/Master/server.ini`, and `config/Caves/server.ini`.
+- Commands: `git status --short`; `git --no-pager diff --check`; repository searches for DST port/token/mod identifiers.
+- No image builds or game-server runs were performed, per the roadmap protocol.
+
+T1 changes are limited to `games/abiotic-factor/README.md`, `games/dont-starve-together/README.md`, and this T1 log/status. Independent review should check the matrix against the target READMEs and confirm the DST port/config assumptions before approval.
+
+#### Reviewer — 2026-10-11
+
+Verdict: revise
+
+Findings:
+
+- Issue: `games/abiotic-factor/README.md` uses `[-SteamServerName=Abiotic Example]` in the `docker run` example. Risk: after applying the documented optional-argument convention, the unquoted space splits the server-name value into separate shell arguments, so the concrete command example is invalid or misroutes the value. Expected change: use a shell-safe concrete value such as `[-SteamServerName=AbioticExample]`, or quote the value while retaining the repository's optional-argument notation.
+
+Verification:
+
+- Independently checked all seven matrix columns against the seven image Dockerfiles and entrypoints, the DST templates, and the available DST tool sources. The matrix correctly distinguishes forwarded arguments from fixed-wrapper behavior, `/data` persistence, DST configuration variables, and unsupported configuration claims.
+- Confirmed the DST template ports (`11000`, `11001`, `27018`, `27019`, `8768`, `8769`) and that its wrapper does not append arbitrary Docker arguments to the game processes.
+- Confirmed both target README structures, image references, `/data` mounts, and argument/configuration claims. The Abiotic example issue above prevents full checklist approval.
+- `git diff --check` passes. No product files were edited and no commit was created.
 
 ---
 
