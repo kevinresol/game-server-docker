@@ -1,0 +1,450 @@
+# Stationeers Console Shim — Task Map
+
+**Status:** Ready — Executable.
+
+## Goal (locked)
+
+Make the Stationeers dedicated server's built-in headless console work inside the Linux container, so that (a) the game's own console output reaches container stdout/stderr and (b) commands written to the container's stdin (for example `save mysave`, `quit`) are executed by the game. Per `stn-diag/20261022T113113Z/DECOMPILE.md`, the stock Linux build never reads stdin because `RocketSystemConsole` (1) throws at its Win32 P/Invokes `kernel32.dll!SetConsoleOutputCP` / `SetConsoleCP`, (2) is only constructed when the args contain no exact `-logFile` token, and (3) only reads input when Mono selects `TermInfoDriver`, which requires stdin and stdout to be real terminals. The work ships a two-part shim: a native `kernel32` stub library that makes the Win32 calls resolve, and an in-container PTY bridge that gives the game a real terminal while the container itself can use plain pipes.
+
+**Out of scope:**
+
+- Any change to the RCON/HTTP console path or to `docs/roadmaps/2610112023_STATIONEERS_RCON_SAVE_ON_SIGINT_ROADMAP.md` (that roadmap may later reuse the stdin console; deciding that is a separate human decision).
+- Save-on-SIGINT/SIGTERM behavior, `autosavecancel`, or any new shutdown flow. The existing SIGTERM→SIGINT forwarding stays as is.
+- The RakNet `serverrun` command channel and any fake-client emulation.
+- Patching, redistributing, or modifying game binaries other than adding a `<dllmap>`/preload entry (and only if S1 selects it).
+- Other games' images, shared base image changes, and README conventions shared across games.
+- Patching IL or any game assembly. The game's busy-wait input loop is mitigated only at the native layer (see the CPU throttle decision), never by editing managed code.
+- Changing `games/stationeers/tool/command/run/*` behavior unrelated to this goal, or the RCON roadmap itself beyond marking it parked in `_index.md`.
+
+## Decisions (locked)
+
+- **Shim mechanism:** the `kernel32` stubs live in one native library, `libkernel32-shim.so`. Preferred wiring is a Mono `<dllmap dll="kernel32.dll" target="..."/>` entry; fallback is `LD_PRELOAD`. S1 selects one based on evidence; S4 implements it. Neither may be chosen without S1 evidence. Note that `LD_PRELOAD` can only help if Mono resolves `kernel32.dll` to a handle whose `dlsym` can see the preloaded symbols; S1's "why `EntryPointNotFoundException`" finding is the real gate.
+- **CPU throttle (native, no IL change):** the game's input loop spins on `Console.KeyAvailable`, which under `TermInfoDriver` is a zero-timeout `poll` on fd 0 per iteration (decompile `RocketSystemConsole.cs:96-123`, `TermInfoDriver.cs:285-297`; the exact syscall is to be confirmed in S1). The shim library also exports an interposing `poll()` that, only for calls with a single descriptor equal to fd 0 and timeout 0, substitutes a short timeout (about 10 ms) and otherwise forwards to libc unchanged. This makes the loop block in the kernel instead of spinning, with input latency of at most that timeout. Because this needs `LD_PRELOAD` regardless of how kernel32 is wired, **`LD_PRELOAD` is set by the Node wrapper on the game child only** (via the `stn-pty` environment), never as an image-wide `ENV`, so node, bash and the helper are unaffected. If S1 shows the throttle is not feasible (for example, the call does not go through an interposable `poll`), stop and ask the user to choose between an opt-in console and accepting about one busy core.
+- **Always on:** the PTY bridge and console are enabled for every run (no opt-in flag). The CPU acceptance threshold in F1 is the guard for this decision; failing it blocks S7.
+- **Feasibility spike first:** S1 must prove, before any production code is written, that stub + PTY + no log flag executes a typed command on the real server build. S2–S8 are blocked until the spike passes.
+- **Terminal source:** the image ships its own PTY bridge, `stn-pty`, a small C helper using `forkpty`. `docker run -i`, `docker attach`, and ECS exec must work without `-t`. Requiring `docker run -it` and LD_PRELOAD faking of `isatty`/`tcgetattr` are rejected alternatives.
+- **Helper CLI contract (frozen so S3 and S5 can run in parallel):**
+  - Invocation: `stn-pty <program> [args...]`. It resolves `<program>` by path, execs it on a PTY slave as fd 0/1/2 (UTF-8 locale unchanged, `TERM=xterm` when `TERM` is unset or `dumb`, fixed window size 200x50), copies PTY master output to its own stdout and its own stdin to the PTY master.
+  - Signals: forwards `SIGINT` and `SIGTERM` to the child. Exits with the child's exit status, or `128+n` if the child died from signal `n`.
+  - Stdin EOF must not terminate or signal the child.
+  - Install path in the image: `/home/steam/shim/stn-pty`; the Node wrapper reads an optional override from env `STN_PTY_BIN` (used by tests), default that path.
+  - PTY output is a single merged stream; the helper has no separate stderr (it writes only its own diagnostics to stderr). The wrapper treats helper stdout as the game's console output.
+  - Terminal settings: the slave keeps the kernel line discipline defaults that Mono's `TermInfoDriver` expects to set up itself; the helper does not pre-switch to raw mode if S1's spike shows this breaks Mono's own `termios` handling (S1 records the working setting, and S3 implements exactly that). `ONLCR` stays on, so output carries `\r\n`; the tee/log normalization rule is in scenario C2. Which byte (`\n` or `\r`) the helper must deliver for Mono to see `ConsoleKey.Enter` is decided by the S1 spike and then frozen.
+  - Stdin EOF: the helper removes fd 0 from its `poll` set (no `POLLHUP` spin) and must **not** close the PTY master, because that would send `SIGHUP` to the child. Without `docker run -i`, stdin is `/dev/null` and EOF is immediate; this must also leave the game running.
+  - `STN_PTY_BIN` is a test seam only; it is documented as such and not advertised in the README.
+- **Log flag handling:** the game process must never receive `-logfile` or `-logFile` (any case). A user-supplied `-logfile`/`-logFile` in the forwarded args is a hard error with the existing error style. The wrapper never appends such a flag.
+- **`--log-file` / `GAME_LOG_FILE` is kept** but its meaning changes to "duplicate the game's console output into this file." The wrapper tees the helper's stdout into the file (append) while stdout/stderr behavior stays unchanged. The existing "make sure the file exists" and "delete on exit" behavior is preserved. The `tail -f` subprocess is removed.
+- **`-noclear`:** the wrapper adds `-noclear` to the game args unless the user already passed it, to avoid clear-screen escape sequences in container logs.
+- **Unity `Player.log`:** without `-logFile`, Unity's `Debug.Log` stream goes to `~/.config/unity3d/<company>/<product>/Player.log`. The wrapper tails it to **stderr** (not the `--log-file` tee). The exact path comes from S1, with a glob fallback `~/.config/unity3d/*/*/Player.log`.
+- **Signals:** `SIGTERM` to the wrapper still results in the game receiving `SIGINT`, now delivered through `stn-pty`. No save is added.
+- **Spawn contract (S5):** spawn with `stdio: ['inherit', 'pipe', 'pipe']`; resolve the run promise on the child's `close` event (not `exit`), so the final output is flushed to stdout and the tee file before the log file is deleted.
+- **`entrypoint.sh`:** `set -x` is removed because it echoes `ServerPassword`/`ServerAuthSecret` into logs (`REPORT.md` side finding). The node job is started in the background by a non-interactive bash, which redirects its stdin to `/dev/null`; the command must therefore be written with `0<&0` (or equivalent) so the container's stdin reaches Node. The SIGTERM trap and wait structure are otherwise unchanged.
+- **Relation to the RCON roadmap:** `2610112023_STATIONEERS_RCON_SAVE_ON_SIGINT_ROADMAP.md` is parked by the user in favor of this work (its HTTP console premise is contradicted by the decompile, which found no HTTP/RCON console). It is marked parked in `_index.md`; reviving it requires a new user decision and must be sequenced after this roadmap because both edit `handler.ts`/`command.ts`.
+- **Build:** the helper and stub library are compiled in a throwaway multi-stage Docker stage and only the outputs are copied into the final image. The final image gains no compiler. Target is linux/amd64 only.
+- **Test safety:** all live runs use throwaway containers, a throwaway save, and random throwaway credentials. Never start, stop, or modify the user's existing `stationeers` container or its data. Do not commit game files, and keep any recorded evidence free of credentials.
+- **Evidence location:** research evidence goes in the relevant task's Agent log, with bulky artifacts under a new `stn-diag/<timestamp>/` directory, which is git-untracked and not part of the deliverable.
+
+## Acceptance
+
+### Feature: Win32 console calls resolve on Linux
+
+Scenario A1 — Console constructs without the kernel32 exception
+  Given the built Stationeers image is started with no `-logfile`/`-logFile` arguments
+  When the server finishes starting
+  Then neither container output nor Unity's `Player.log` contains `EntryPointNotFoundException` or `DllNotFoundException` for `SetConsoleOutputCP`/`SetConsoleCP`
+  And the game's own console lines, including `RakNet successfully hosted` and `Ready`, appear in `docker logs`
+
+### Feature: Stdin commands reach the game
+
+Scenario B1 — Piped stdin works without a TTY
+  Given a running container started with `docker run -i` (no `-t`) and a throwaway save
+  When `save stnshim1` is written to the container's stdin followed by a newline
+  Then a save named `stnshim1` appears under `/data`
+  And the command's console response appears on container stdout
+
+Scenario B2 — Attached terminal works
+  Given a running container started with `docker run -it`
+  When the operator types `help` and Enter
+  Then the game's command list is printed in the terminal
+
+Scenario B3 — Closing or absent stdin does not stop the server
+  Given a running container started with `docker run -i`, and separately one started without `-i` (stdin is `/dev/null`)
+  When stdin reaches EOF (explicitly, or immediately)
+  Then the game keeps running
+  And the container's CPU use does not spike due to a poll/EOF spin in `stn-pty`
+
+Scenario B4 — Container stdin reaches the game
+  Given a container started with `docker run -i`
+  When the process tree is inspected
+  Then fd 0 of the Node wrapper is not `/dev/null`
+
+### Feature: Log flag and log file behavior
+
+Scenario C1 — The game never sees a log flag
+  Given the image started with or without `--log-file /home/steam/stationeers.log`
+  When the game process command line is inspected
+  Then it contains neither `-logfile` nor `-logFile`
+
+Scenario C2 — `--log-file` duplicates output
+  Given the image started with `--log-file /home/steam/stationeers.log`
+  When the server runs
+  Then the file contains the same console lines as container stdout, byte-for-byte as emitted by `stn-pty` (any `\r`/escape-sequence stripping is the same for both or neither; S5 chooses and tests one rule)
+  And container stdout/stderr content is not reduced by using the option
+
+Scenario C3 — Manual log flag is rejected
+  Given forwarded game args include `-logfile x` or `-logFile -`
+  When the wrapper starts
+  Then it exits with an error that points to `--log-file`/`GAME_LOG_FILE` and does not start the game
+
+Scenario C4 — Unity log reaches stderr
+  Given the server running without a log flag
+  When Unity writes to its `Player.log`
+  Then those lines appear on the container's stderr
+
+### Feature: Shutdown and secrets
+
+Scenario D1 — SIGTERM shuts the server down cleanly
+  Given a running container
+  When `docker stop` is issued
+  Then the game receives `SIGINT` through `stn-pty` and exits within the `docker stop` grace period (10 s default; S7 records the observed time)
+  And the wrapper logs the game's exit status, and the container exit code is recorded in S7 evidence
+  And the pass condition is "exited without being killed (not 137)"; the exact code (0, 130 or 143) is recorded and, if non-zero, documented rather than changed in this roadmap
+
+Scenario D2 — No credentials echoed by the entrypoint
+  Given the image started with `-settings ServerPassword secretx ServerAuthSecret secrety`
+  When the container starts
+  Then neither value appears in `docker logs` output produced by the entrypoint
+
+### Feature: CPU cost
+
+Scenario F1 — Idle console does not peg a core
+  Given a running idle server (no clients) with the console active
+  When the game process's CPU use is sampled over 60 s
+  Then it is no more than 15 percentage points above the same idle server run with the old direct-spawn path (user confirmed this threshold on 2026-10-23; S1 baseline was 27.5% of one core)
+
+### Feature: Documentation
+
+Scenario E1 — README matches behavior
+  Given the finished implementation
+  When a reader follows `games/stationeers/README.md`
+  Then the documented stdin usage, optional `--log-file` (including that it no longer contains Unity's own log), no-manual-log-flag rule, and CPU note match what S7 measured
+
+## Protocol
+
+**Pack:** four-pack
+
+- **Chunk order:** S1 first (feasibility spike and research); nothing else starts until S1 is approved, because it fixes the kernel32 wiring, the terminal settings and Enter byte, the throttle feasibility, and the `Player.log` path. After S1, S2, S3 and S5 may run in parallel (disjoint files). S4 depends on S2 and S3. S6 depends on S5 (and S1). S7 depends on S4, S5 and S6. S8 depends on S7.
+- **Parallelism and ownership:** S2/S3/S5 own disjoint files. S5 and S6 both touch `handler.ts`; they must run sequentially (S6 after S5 is approved). The RCON roadmap is parked (see Decisions); no other roadmap may edit `games/stationeers/tool/command/run/*` while this one is in progress.
+- **Scope boundaries:** each implementor may change only the files listed for its task and append evidence to that task's Agent log. If S1 shows neither `<dllmap>` nor `LD_PRELOAD` removes the kernel32 failure, or the end-to-end spike fails, or the throttle is infeasible, mark S2–S8 blocked and ask the user; do not invent another mechanism.
+- **Build for live tests:** build the tool bundle with `pnpm eval build-game-tool --game=stationeers` (produces `games/stationeers/dist/tool.js`), then `docker build --platform=linux/amd64 --file=games/stationeers/Dockerfile games/stationeers` (context is `games/stationeers`, matching `build-game-image`; this downloads about 10 GB of game files, so reuse the local layer cache and the existing local image where possible).
+- **Verification commands (when applicable):**
+  - TypeScript: `pnpm exec tsc --noEmit --pretty false`
+  - Focused tests: `pnpm exec tsx --test games/stationeers/tool/command/run/handler.test.ts`
+  - Bundle: `pnpm exec esbuild games/stationeers/tool/main.ts --bundle --platform=node --outfile=/tmp/stationeers-tool.js`
+  - Whitespace: `git diff --check`
+  - Live checks (S7) use throwaway containers as described in Decisions.
+- **Review:** coder → cleaner → reviewer per four-pack. Reviewers check the task checklist, the locked decisions, and the signal/stdio contract end to end.
+
+## Cleanup lane
+
+- Behavior-preserving tidy only, within each chunk's Files list: remove the dead commented-out `autosavecancel` block in `handler.ts` and the stale "perform autosave" sentence in `command.ts` only as part of S5, and nowhere else. The separate `cleaner` stage is part of four-pack and has the same file limits.
+
+---
+
+## Human gate / Executable
+
+- [x] User sets this roadmap **Executable** (explicit approval) before implementors treat it as execute-ready. Approved by the user on 2026-10-23.
+
+Drafts are not execute-ready until the user explicitly approves Executable. Review approval does not grant Executable status. The F1 CPU threshold is confirmed: on 2026-10-23 the user approved 15 percentage points above the old direct-spawn idle CPU. S2 still waits for S1 review approval.
+
+## Task list
+
+### S1 — Feasibility spike: kernel32 loading, end-to-end console, throttle, Player.log
+
+**Status:** approved
+
+**Depends on:** none
+
+**Files:** this roadmap (S1 Agent log only). Optional scratch evidence under `stn-diag/<timestamp>/` (untracked).
+
+#### Implementor checklist
+
+- [x] Using a throwaway container from the existing local image (`kevinresol/stationeers-dedicated-server:latest`) and a throwaway save, explain why the failure is `EntryPointNotFoundException` rather than `DllNotFoundException`, with `strace -f -e openat` or `LD_DEBUG=libs` evidence.
+- [x] Inspect `MonoBleedingEdge/etc/mono/config` for existing `<dllmap>` entries and record its path inside the image.
+- [x] Build a throwaway stub exporting `SetConsoleOutputCP` and `SetConsoleCP` returning `1`; test wiring A (`<dllmap>`) then, only if A fails, wiring B (`LD_PRELOAD`). Record which removes the exception, with log evidence.
+- [ ] If neither works, stop and mark S2–S8 blocked with the evidence.
+- [x] **End-to-end spike:** with the working stub, no `-logfile`/`-logFile`, and a PTY on fd 0/1 (for example `docker run -t`, or Python `pty`/`script` as a stand-in for `stn-pty`), prove the game executes typed `help` and `save stnspike1` (save file appears under the throwaway data dir). Record which input byte (`\n` or `\r`) Mono maps to Enter, and whether a raw-mode slave breaks Mono's own `termios` handling; record the terminal settings that work.
+- [x] Confirm the exact syscall behind `Console.KeyAvailable` (expected `poll` on fd 0 with timeout 0) by `strace -f -e trace=poll,ppoll,select`, measure the spin rate and idle CPU, then prototype the `poll()` interposer and measure again. Record whether it is effective and that input latency stays acceptable. Also measure the baseline CPU of the old direct-spawn path and propose the F1 threshold (user confirms before S2).
+- [x] Determine the real `Player.log` path for the dedicated server build (and whether `HOME` differs for the `steam` user). Check whether Unity writes console lines to both `Player.log` and the console (duplicate lines on stderr/stdout).
+- [x] Record whether any further Win32 symbols are resolved after the console constructor runs (look for additional `EntryPointNotFoundException`s during a bounded 60 s run).
+- [ ] If the spike or the throttle fails, mark S2–S8 blocked and ask the user (opt-in console vs accepting one busy core vs stopping).
+- [x] Do not touch the user's existing `stationeers` container, volumes, or data.
+
+#### Reviewer checklist
+
+- [x] The chosen wiring is supported by captured evidence, not assumption, and was tested against the current image build.
+- [x] No existing container/data was modified; no credentials appear in recorded evidence.
+- [x] The `Player.log` path claim is evidence-backed.
+- [x] The spike really executed a command on the real server (save file present), and the Enter byte, terminal settings, and throttle effectiveness are each recorded with evidence.
+
+#### Agent log
+
+Implementor, 2026-10-23. Evidence under `stn-diag/20261022T222241Z/` (image `stn-s1-lab:1`, from `kevinresol/stationeers-dedicated-server:latest`). Throwaway containers only. `stationeers` stayed exited; `FinishedAt` unchanged (`2026-10-22T11:39:53.851256288Z`). Containers `stn-s1-nm`, `stn-s1-symtest`, `stn-s1-throttle`, `stn-s1-base` and volumes `stn-s1-vol-throttle`, `stn-s1-vol-base` were removed. No credentials recorded.
+
+**Why `EntryPointNotFoundException`.** Mono config file (Mono logs the directory `.../MonoBleedingEdge/etc`; the file is `mono/config` under that):
+
+`/home/steam/Steam/steamapps/common/StationeersDedicatedServer/rocketstation_DedicatedServer_Data/MonoBleedingEdge/etc/mono/config`
+
+The stock `<dllmap dll="i:kernel32.dll">` block maps `CopyMemory`, `FillMemory`, `MoveMemory`, and `ZeroMemory` to `__Internal`. The dll resolves, so `q1/strace-open.txt` never opens a `kernel32` file, and `q1/game.log` is `EntryPointNotFoundException: SetConsoleOutputCP` (lowercase `-logfile` still constructs the console; only exact `-logFile` skips it). Removing that block (`v1-remove`) makes Mono search the filesystem and throw `DllNotFoundException: kernel32.dll`.
+
+**Wiring S4 must apply (wiring A, dllentry).** Mono keeps the last matching map. A new `<dllmap dll="kernel32.dll" target="..."/>` inserted before the stock block (`vA1`) is ignored: the shim is never opened and `EntryPointNotFoundException` remains. The same element appended after the block (`vA1b`) does clear the exception, but it replaces the whole dll and drops the four `__Internal` entries. Do not ship that.
+
+S4 must insert these two lines inside the existing `<dllmap dll="i:kernel32.dll">` block, after the four `__Internal` entries and before that block's `</dllmap>`, and fail the build if that block is missing. Spike path was `/tmp/shim/libkernel32-shim.so`; the image path is `/home/steam/shim/libkernel32-shim.so`:
+
+```xml
+		<dllentry dll="/home/steam/shim/libkernel32-shim.so" name="SetConsoleOutputCP" target="SetConsoleOutputCP"/>
+		<dllentry dll="/home/steam/shim/libkernel32-shim.so" name="SetConsoleCP" target="SetConsoleCP"/>
+```
+
+`vA2` used that shape. `vA2/stn-shim.log` shows `SetConsoleOutputCP(65001)` and `SetConsoleCP(65001)`, and `vA2/game.log` has neither exception. `LD_PRELOAD` was not needed to resolve kernel32. It is still required on the game child only, for the `select` throttle below (same `.so`).
+
+**End-to-end.** No `-logFile`, A2 dllentry, PTY via `lab/ptyrun.py` (kernel slave defaults, no `RAWSLAVE`, 200x50, `TERM=xterm`). Paced typing executed `help` (command list at 22:38:01) and `save stnspike1` (`Starting NewSave for stnspike1`, `Created new save` at 22:38:45–46) in `e2e2/pty-out.redacted.txt`. Enter byte Mono reads is `\n` (0x0a): `e2e2/strace-read-fd0-paced.txt` shows `read(0, "\n", 1024) = 1`. `icrnl` is on, so a master-side `\r` would also be delivered as `\n`; the byte the helper writes is `\n`. Raw mode was not switched on. Working `stty -a` (e2e1 after Mono init, and the same reading on the throttle run) is 38400 baud, rows 50, columns 200, `min = 1`, `time = 0`, `-inlcr -igncr icrnl`, `opost onlcr`, `isig -icanon iexten -echo`. S3 leaves those kernel defaults and does not call `cfmakeraw`. Output lines end in CR LF.
+
+Burst-vs-paced risk for `stn-pty` (contract unchanged): Mono's read is `read(0, buf, 1024)`. A queued burst returned four bytes at once (`e2e1/strace-read-write-after-abc.txt`, `read(0, "abc\n", 1024) = 4`). Paced one-byte writes are what executed `help` and `save`. A single write of a whole line to the PTY master is not what this spike proved.
+
+**Throttle.** `Console.KeyAvailable` is not `poll`. Unthrottled (`e2e2/strace-keyavailable.txt`): 31232 `pselect6(1, [0], NULL, NULL, {tv_sec=0, tv_nsec=0})` in 6 s (~5205/s), zero `poll`/`ppoll`. An unversioned `select` interposer changed `pselect6`. An `LD_PRELOAD` `select` (and `pselect`/`poll`, forwarded unless they match) lengthens only `nfds==1`, read fd 0, `NULL` write/except, zero `timeval` to 10 ms. Counters on the game (`throttle/post.txt`): `select` 7153, of which 7152 were that case; `pselect` 0; `poll` 84, of which 0 were fd-0 timeout 0. Attached strace (`throttle/pselect-sample.txt`): `pselect6` timeout `tv_nsec=10000000`, 188 calls in 2 s, `poll` count 0. Idle CPU, same `cpu.py`, 60 s after the world save:
+
+| run | process CPU | hottest thread |
+| --- | --- | --- |
+| console, no throttle (`e2e2/cpu-60s-console-nothrottle.txt`) | 117.5% | `rocketstation_D` 100.0% |
+| console + 10 ms `select` (`throttle/cpu-60s.txt`) | 26.9% | `rocketstation_D` 12.3% |
+| old direct spawn, no PTY, `-logfile /home/steam/stationeers.log`, stdin `/dev/null` (`baseline/cpu-60s.txt`) | 27.5% | `rocketstation_D` 13.4% |
+
+Throttled minus baseline is −0.6 percentage points. **Proposed F1 threshold: 15 percentage points** above the direct-spawn process CPU (the provisional number). This pair of samples also fits a threshold of 5; 15 is the number to confirm so a heavier world does not false-fail. User confirms before S2. A paced `help\n` (30 ms/byte) after the sample showed "Displays helpful stuff" within the 1 s check. S2 interposes `select` with that predicate, not `poll`.
+
+**`Player.log`.** `steam` HOME is `/home/steam` (passwd and the game environ). On the no-`-logFile` PTY run there was no `Player.log` under `/home/steam` (walk count 0), no `~/Rocketwerkz`, and `~/.config/unity3d/Rocketwerkz/rocketstation/` contained only `prefs` (218 bytes). The ready check required `RakNet successfully hosted` on the PTY. `e2e2/pty-out.redacted.txt` has both that line and the Unity shader errors. Those lines are on the console only; there is no second copy in `Player.log` while stdout is a PTY. S6's glob `~/.config/unity3d/*/*/Player.log` does not match this run. Company/product directory, if a file appears later, is `Rocketwerkz/rocketstation`.
+
+**Further Win32 symbols.** None. Full PTY log and the 60 s idle delta (`throttle/window-exceptions.txt`) had no `EntryPointNotFoundException` or `DllNotFoundException`. Shim log shows only the two `SetConsole*` calls. S2 exports those two and nothing else.
+
+Spike and throttle both worked. S2–S8 stay pending. S2 does not start until this chunk is approved and the user confirms the F1 number of 15.
+
+**F1 confirmed — 2026-10-23.** The user approved the idle-console CPU limit: 15 percentage points above the old direct-spawn path (S1 sample 27.5% of one core; throttled console sample 26.9%). S2 may start once S1 is approved.
+
+#### Reviewer — S1 — 2026-10-23
+
+Verdict: revise
+
+- Issue: the paced `save stnspike1` is only a console transcript (`Starting NewSave`, `file created in 18ms`, `Created new save`). The only on-disk path captured is the startup world `/data/StnS1/StnS1.save`. Risk: later chunks can treat a console line as proof the command wrote a save. Expected change: on a throwaway container, repeat the paced `save stnspike1` and record the save file path and size in the evidence and this log.
+- Also drop or source the sentence that `libmonobdwgc-2.0.so` imports `select@GLIBC_2.2.5`. No artifact shows that version. The captured fact is that an unversioned `select` interposer changed `pselect6`.
+
+Wiring A, Enter byte `\n`, kernel terminal defaults, the `select` throttle (117.5% / 26.9% / 27.5%), no `Player.log`, no further Win32 exception, and throwaway cleanup matched the evidence. `stationeers` was still exited at `2026-10-22T11:39:53.851256288Z`. After the save listing, S2 may interpose `select` (not `poll`). The missing `Player.log` does not block S6. Retry 1 of 2.
+
+**Implementor — S1 revise 1.** Throwaway `stn-s1-e2e-save` (image `stn-s1-lab:1`, volume `stn-s1-vol-e2e-save`, no published ports): A2 dllentry, no `-logFile`, PTY, paced one-byte `save stnspike1` and a final `\n`. After the console reported `Starting NewSave for stnspike1` and `Created new save`, `stn-diag/20261022T222241Z/e2e-save/data-listing.txt` lists `/data`. Save path `/data/stnspike1/stnspike1.save`, 18249 bytes. Removed container `stn-s1-e2e-save` and volume `stn-s1-vol-e2e-save`. `stationeers` stayed exited at `2026-10-22T11:39:53.851256288Z`.
+
+#### Reviewer — S1 attempt 2 — 2026-10-23
+
+Verdict: approve. The paced save is on disk at `/data/stnspike1/stnspike1.save` (18249 bytes) in `stn-diag/20261022T222241Z/e2e-save/data-listing.txt`. The `select@GLIBC_2.2.5` version is not stated as fact. Residual risk: a single whole-line write to the PTY master is still unproved; paced one-byte writes ending in `\n` created the save. S2 implements `select`, not `poll`. The missing `Player.log` does not block S6. Pack four-pack; no separate cleaner diff because S1 files are this log and untracked evidence. Evidence under `stn-diag/` stays untracked. S2, S3, and S5 start in parallel worktrees.
+
+---
+
+### S2 — `kernel32` stub and `poll` throttle library
+
+**Status:** pending
+
+**Depends on:** S1 approved
+
+**Files:** `games/stationeers/shim/kernel32_shim.c`
+
+#### Implementor checklist
+
+- [ ] Implement `SetConsoleOutputCP` and `SetConsoleCP` as no-ops returning `1`, with the signatures the game uses (`uint32_t` argument).
+- [ ] Add any additional Win32 symbols S1 found to be required, and nothing else.
+- [ ] Implement the `poll()` interposer exactly as specified in the CPU throttle decision (only `nfds == 1`, `fd == 0`, `timeout == 0` is altered; everything else forwards to libc via `dlsym(RTLD_NEXT, "poll")`; thread-safe, no allocation). If S1 selected another syscall (`ppoll`/`select`), interpose that one instead and say so in the file header.
+- [ ] Compile with `-shared -fPIC -O2 -Wall -Wextra -Werror` in a throwaway `gcc` container and confirm the exported symbols appear in `nm -D` output.
+- [ ] Add a small standalone test (shell + tiny C driver compiled in the same container; the driver may live inline in the Agent log rather than the repo) showing `poll(fd 0, timeout 0)` blocks about the substituted timeout while other `poll` calls are unchanged; paste the output.
+- [ ] Add a header comment stating why the library exists and linking to the decompile finding.
+
+#### Reviewer checklist
+
+- [ ] Exported symbol names and return type match the P/Invoke usage (`bool` marshalled as non-zero success).
+- [ ] The interposer cannot alter any call except the exact fd-0 zero-timeout case, and cannot recurse.
+- [ ] No scope creep beyond the symbols justified by S1 evidence.
+
+#### Agent log
+
+<!-- implementor / reviewer append below -->
+
+---
+
+### S3 — `stn-pty` PTY bridge
+
+**Status:** pending
+
+**Depends on:** S1 approved (terminal settings and Enter byte are fixed by S1; the CLI contract is frozen in Decisions)
+
+**Files:** `games/stationeers/shim/stn_pty.c`, `games/stationeers/shim/stn_pty_test.sh`
+
+#### Implementor checklist
+
+- [ ] Implement the frozen CLI contract: `forkpty` child exec, the terminal settings and Enter byte S1 proved to work, 200x50 window size, `TERM=xterm` default, bidirectional copy master↔stdio with a `poll` loop. Set `LD_PRELOAD` for the child only if the wrapper passes it in the environment; the helper itself must not be preloaded.
+- [ ] Forward `SIGINT`/`SIGTERM` to the child, propagate its exit status (`128+n` for signals), and keep running when stdin reaches EOF: drop fd 0 from the `poll` set on EOF and never close the PTY master while the child lives.
+- [ ] Handle `SIGCHLD`, partial writes, and `EINTR` correctly; drain remaining PTY output before exiting.
+- [ ] Compile with `-Wall -Wextra -Werror` in a throwaway `gcc` container (`-lutil` as needed).
+- [ ] `stn_pty_test.sh` uses a trivial child (for example a shell script that prints `isatty` results for fd 0/1 and echoes lines) to prove: both fds are TTYs under `docker run -i` without `-t`; input lines reach the child; exit status propagates for both normal exit and signal death; SIGTERM is forwarded; EOF on stdin (explicit and `/dev/null`) leaves the child running and does not make the helper spin (measure its CPU over a few seconds).
+- [ ] Run the test script in a throwaway container and paste the output into the Agent log.
+
+#### Reviewer checklist
+
+- [ ] The contract in Decisions is implemented exactly, including the EOF and signal behavior.
+- [ ] No fd leaks into the child; no zombie processes; no busy loop in the helper itself.
+- [ ] Test evidence covers each bullet, not just the happy path.
+
+#### Agent log
+
+<!-- implementor / reviewer append below -->
+
+---
+
+### S4 — Dockerfile and entrypoint wiring
+
+**Status:** pending
+
+**Depends on:** S2 and S3 approved
+
+**Files:** `games/stationeers/Dockerfile`, `games/stationeers/entrypoint.sh`
+
+#### Implementor checklist
+
+- [ ] Add a compile stage (throwaway Debian/gcc image matching the base image's glibc generation; record `ldd --version` of both in the Agent log and confirm the built `.so`/binary run in the final image) that builds `libkernel32-shim.so` and `stn-pty` from `games/stationeers/shim/`; copy only the outputs to `/home/steam/shim/` in the final image with `steam:steam` ownership.
+- [ ] Implement the S1-selected kernel32 wiring: the `<dllmap>` entry written into the Mono config at build time (fail the build loudly if the config edit target is missing), or the `LD_PRELOAD` fallback. In either case, `LD_PRELOAD` for the throttle is set only for the game child by the wrapper (S5 reads the library path from `/home/steam/shim/libkernel32-shim.so`); never add an image-wide `ENV LD_PRELOAD`.
+- [ ] Ensure the `xterm` terminfo entry exists in the final image (install the package only if it is absent).
+- [ ] Remove the default `ENV GAME_LOG_FILE` so no log file is created unless the user opts in. Keep other internal vars unchanged.
+- [ ] In `entrypoint.sh`, remove `set -x` and make the backgrounded node command inherit stdin explicitly (`0<&0`), so `docker run -i` input is not replaced by `/dev/null`; keep the SIGTERM trap and `wait` structure unchanged.
+- [ ] Build the image locally using the build commands in Protocol with the current `dist/tool.js`, and confirm the shim files and wiring are present and that fd 0 of the node process is a pipe/tty (not `/dev/null`) under `docker run -i` using a short-lived throwaway container. Do not run a long-lived server in this task.
+
+#### Reviewer checklist
+
+- [ ] The final image contains no compiler or build artifacts beyond the two shim outputs.
+- [ ] Wiring matches S1's evidence; the build breaks if the config file moves; no image-wide `LD_PRELOAD`.
+- [ ] `entrypoint.sh` diff is limited to removing `set -x` and the stdin inheritance.
+
+#### Agent log
+
+<!-- implementor / reviewer append below -->
+
+---
+
+### S5 — Wrapper: spawn through `stn-pty`, tee, log-flag rules
+
+**Status:** pending
+
+**Depends on:** S1 approved (uses the frozen helper contract)
+
+**Files:** `games/stationeers/tool/command/run/handler.ts`, `games/stationeers/tool/command/run/command.ts`, `games/stationeers/tool/command/run/handler.test.ts`
+
+#### Implementor checklist
+
+- [ ] Spawn `${STN_PTY_BIN ?? "/home/steam/shim/stn-pty"} <game binary> <args>` with `stdio: ['inherit', 'pipe', 'pipe']`, setting `LD_PRELOAD=/home/steam/shim/libkernel32-shim.so` (joined with any existing value) in the child environment only. Pipe helper stdout to `process.stdout` and tee it into the log file; forward helper stderr to `process.stderr`. Resolve the run promise on the child's `close` event, not `exit`.
+- [ ] Choose and test one normalization rule for the tee file versus stdout (identical bytes, or the same stripping applied to both), per scenario C2.
+- [ ] Stop appending `-logfile`. Reject (case-insensitive) a user-supplied `-logfile` or `-logFile` with an error pointing to `--log-file`/`GAME_LOG_FILE`.
+- [ ] Add `-noclear` unless already present.
+- [ ] With `--log-file`: ensure the file exists, tee console output into it (append), and delete it on exit as today. Remove the `tail -f` subprocess.
+- [ ] Preserve `SIGTERM` → `SIGINT` forwarding (target is the helper, which forwards it) and the exit-code logging/reject-on-non-zero behavior.
+- [ ] Update the command description in `command.ts` to describe the real behavior (stdin console, `--log-file` tee) and remove the stale autosave sentence.
+- [ ] Remove the dead commented-out `autosavecancel` block (cleanup lane).
+- [ ] Add tests with a fake helper and a fake game script (via `STN_PTY_BIN`): arg list contains no log flags and has `-noclear`; manual log flag rejected in both spellings; tee matches stdout per the chosen rule; fd 0 of the helper is inherited from the wrapper (a fake helper asserts it is not a pipe created by Node); `LD_PRELOAD` is set for the child only; the log file is not deleted before the last output is flushed; SIGTERM maps to SIGINT; exit code handling. Tests must not depend on source-text assertions only.
+- [ ] Run tsc, focused tests, esbuild bundle, and `git diff --check`; paste results in the Agent log.
+
+#### Reviewer checklist
+
+- [ ] The game process can never receive a log flag, via any path (user args, env, option).
+- [ ] stdout/stderr behavior is unchanged when `--log-file` is set.
+- [ ] Signal and exit behavior match the pre-change behavior; no new shutdown flows.
+- [ ] Scope limited to the listed files; the dead-code removal is behavior-neutral.
+
+#### Agent log
+
+<!-- implementor / reviewer append below -->
+
+---
+
+### S6 — Tail Unity `Player.log` to stderr
+
+**Status:** pending
+
+**Depends on:** S1 and S5 approved
+
+**Files:** `games/stationeers/tool/command/run/playerlog.ts`, `games/stationeers/tool/command/run/playerlog.test.ts`, `games/stationeers/tool/command/run/handler.ts` (hook only)
+
+#### Implementor checklist
+
+- [ ] Implement a small module that waits (bounded, about 30 s) for the S1-identified `Player.log` (glob fallback `~/.config/unity3d/*/*/Player.log`), then streams appended lines to `process.stderr`; it must also stream content written before it attached.
+- [ ] Stop it cleanly when the server exits; a missing file must never fail or delay startup/shutdown, and a single warning line is acceptable.
+- [ ] Wire it into the handler with the smallest possible change; do not alter the `--log-file` tee or the signal handling.
+- [ ] Tests with a temp directory: file appears late, file pre-exists, never appears, stop-on-exit.
+- [ ] Run tsc, focused tests, bundle, `git diff --check`; paste results in the Agent log.
+
+#### Reviewer checklist
+
+- [ ] No unbounded wait, no leaked watchers/child processes after exit.
+- [ ] Output goes to stderr only.
+- [ ] `handler.ts` changes are limited to the hook.
+
+#### Agent log
+
+<!-- implementor / reviewer append below -->
+
+---
+
+### S7 — Live integration verification
+
+**Status:** pending
+
+**Depends on:** S4, S5, S6 approved
+
+**Files:** this roadmap (S7 Agent log only); scratch evidence under untracked `stn-diag/<timestamp>/`
+
+#### Implementor checklist
+
+- [ ] Build the full image locally and run only throwaway containers with random credentials, a throwaway save, and no published ports unless needed.
+- [ ] Verify Acceptance A1 (grep both container output and `Player.log`), B1, B2, B3 (both the `-i` EOF and no-`-i` cases), B4, C1 (via `/proc/<pid>/cmdline`), C2, C3, C4, D1, D2 and F1; record command, output excerpt (credentials redacted), and result for each.
+- [ ] If a scenario fails, record evidence and mark S7 blocked rather than patching files outside this task's scope; report the failing owner task.
+- [ ] For F1, sample the game's CPU for 60 s with the console active and compare against the S1 direct-spawn baseline; for D1, record the observed stop time and the container exit code.
+- [ ] Clean up all containers, volumes, and images created, and list what was removed.
+
+#### Reviewer checklist
+
+- [ ] Every Acceptance scenario (A1 through F1) has captured evidence or an explicit, justified "not verifiable".
+- [ ] No credentials in evidence; the user's existing containers/data untouched.
+- [ ] Cleanup list is complete.
+
+#### Agent log
+
+<!-- implementor / reviewer append below -->
+
+---
+
+### S8 — README documentation
+
+**Status:** pending
+
+**Depends on:** S7 approved
+
+**Files:** `games/stationeers/README.md`
+
+#### Implementor checklist
+
+- [ ] Document sending commands over stdin (`docker run -i` / `docker attach`), with concrete example values and `[...]` around optional parts, per `AGENTS.md` README rules.
+- [ ] Document the optional `--log-file`/`GAME_LOG_FILE` meaning (console output duplicate; no game log flag passed) and that manual `-logfile`/`-logFile` is rejected.
+- [ ] Mention that `-noclear` is added automatically, that Unity's own log is mirrored to stderr, that `--log-file` no longer contains Unity's own log (migration note for users who relied on the old file), and the measured idle CPU note from S7.
+- [ ] Document only behavior verified in S7 and specific to this image; do not alter other READMEs or the common structure.
+
+#### Reviewer checklist
+
+- [ ] Every documented behavior is backed by S7 evidence.
+- [ ] Examples use concrete values, not abstract placeholders; optional parts bracketed.
+- [ ] Only `games/stationeers/README.md` changed.
+
+#### Agent log
+
+<!-- implementor / reviewer append below -->
