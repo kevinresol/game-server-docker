@@ -49,8 +49,10 @@ export default async function ({
 		},
 	});
 
-	// Docker stop sends SIGTERM. Unity handles SIGINT; stn-pty forwards it to the game.
-	process.on("SIGTERM", () => proc.kill("SIGINT"));
+	// Docker stop is SIGTERM at PID 1, then here. Ctrl+C is SIGINT at PID 1, then here.
+	// stn-pty forwards SIGINT and delivers SIGTERM to the game as SIGINT.
+	process.on("SIGTERM", () => proc.kill("SIGTERM"));
+	process.on("SIGINT", () => proc.kill("SIGINT"));
 
 	if (!proc.stdout || !proc.stderr) {
 		proc.kill("SIGKILL");

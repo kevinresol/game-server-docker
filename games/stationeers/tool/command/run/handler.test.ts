@@ -356,10 +356,14 @@ child.on("close", (code) => process.exit(code === null ? 1 : code));
 		logLines.push(args);
 	};
 	const restoreSignals = (() => {
-		const before = new Set(process.listeners("SIGTERM"));
+		const signals = ["SIGTERM", "SIGINT"] as const;
+		const before = new Map(signals.map((signal) => [signal, new Set(process.listeners(signal))]));
 		return () => {
-			for (const listener of process.listeners("SIGTERM")) {
-				if (!before.has(listener)) process.removeListener("SIGTERM", listener);
+			for (const signal of signals) {
+				const keep = before.get(signal);
+				for (const listener of process.listeners(signal)) {
+					if (!keep?.has(listener)) process.removeListener(signal, listener);
+				}
 			}
 		};
 	})();
@@ -723,17 +727,36 @@ describe("stationeers run handler", { concurrency: false }, () => {
 		}
 	});
 
-	test("maps SIGTERM to SIGINT on the helper", async () => {
+	test("forwards SIGTERM to the helper and the game", async () => {
 		const run = startRun({ mode: "signal" });
 		try {
 			await waitFor(() => fs.existsSync(run.readyPath), "helper readiness");
 			process.kill(process.pid, "SIGTERM");
+			await run.result;
+			assert.equal(fs.readFileSync(run.signalPath, "utf8"), "SIGTERM");
+			assert.equal(fs.readFileSync(run.gameSignalPath, "utf8"), "SIGTERM");
+			assert.deepEqual(run.logs(), [["Server process exited with code: ", 0]]);
+		} finally {
+			await run.cleanup();
+		}
+	});
+
+	test("forwards SIGINT to the helper and the game", async () => {
+		const runnerInt = process.listeners("SIGINT").slice();
+		const run = startRun({ mode: "signal" });
+		try {
+			await waitFor(() => fs.existsSync(run.readyPath), "helper readiness");
+			for (const listener of runnerInt) process.removeListener("SIGINT", listener);
+			process.kill(process.pid, "SIGINT");
 			await run.result;
 			assert.equal(fs.readFileSync(run.signalPath, "utf8"), "SIGINT");
 			assert.equal(fs.readFileSync(run.gameSignalPath, "utf8"), "SIGINT");
 			assert.deepEqual(run.logs(), [["Server process exited with code: ", 0]]);
 		} finally {
 			await run.cleanup();
+			for (const listener of runnerInt) {
+				if (!process.listeners("SIGINT").includes(listener)) process.on("SIGINT", listener);
+			}
 		}
 	});
 

@@ -10,13 +10,15 @@
  *
  * S1 (2026-10-23) froze the slave setup that Mono accepts:
  *   - kernel line-discipline defaults; do not call cfmakeraw or switch to raw
- *   - ONLCR stays on (slave output carries CR LF)
- *   - window 200 columns by 50 rows
+ *   - ONLCR is cleared before exec, so a newline the child writes stays LF
+ *     on the master. Every other output flag stays at the kernel default.
+ *     Master output and input toward the slave are copied unchanged.
+ *   - window 80 columns by 30 rows
  *   - TERM=xterm only when TERM is unset or dumb
  *   - locale left unchanged
- *   - the Enter byte this process must deliver is \n (0x0a). Bytes are copied
- *     verbatim. The kernel icrnl default is left on, so a \n written to the
- *     master is what the slave's read returns.
+ *   - the Enter byte this process must deliver is \n (0x0a). Input bytes are
+ *     copied verbatim. The kernel icrnl default is left on, so a \n written
+ *     to the master is what the slave's read returns.
  *
  * LD_PRELOAD is the Node wrapper's choice, passed in this process's
  * environment so the game is interposed. This program does not invent a
@@ -29,8 +31,9 @@
  *
  * Stdin EOF removes fd 0 from the poll set and does not close the PTY master
  * (that would SIGHUP the child). This covers docker run -i closed later and
- * a container whose stdin is /dev/null. SIGINT and SIGTERM are forwarded to
- * the child. The exit status is the child's, or 128+n if signal n killed it.
+ * a container whose stdin is /dev/null. SIGINT is forwarded to the child.
+ * SIGTERM is delivered to the child as SIGINT. The exit status is the
+ * child's, or 128+n if signal n killed it.
  */
 
 #define _GNU_SOURCE
@@ -45,10 +48,11 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/wait.h>
+#include <termios.h>
 #include <unistd.h>
 
-#define STN_ROWS 50
-#define STN_COLS 200
+#define STN_ROWS 30
+#define STN_COLS 80
 #define STN_BUF 4096
 
 #define STN_SAVED_PRELOAD "STN_PTY_SAVED_PRELOAD"
@@ -86,10 +90,23 @@ static void clear_buf(struct pipebuf *b) {
     b->len = 0;
 }
 
+/* The game's shutdown path is SIGINT. A stop signal that arrives here as
+ * SIGTERM is rewritten before it is sent. */
+static int signal_for_child(int sig) {
+    if (sig == SIGTERM) {
+        return SIGINT;
+    }
+    return sig;
+}
+
+static void signal_child(pid_t pid, int sig) {
+    (void)kill(pid, signal_for_child(sig));
+}
+
 static void on_forward(int sig) {
     sig_atomic_t pid = g_child_pid;
     if (pid > 0) {
-        (void)kill((pid_t)pid, sig);
+        signal_child((pid_t)pid, sig);
     } else {
         g_forward = sig;
     }
@@ -235,6 +252,7 @@ static void reset_default(int sig) {
 }
 
 static void child_exec(char **argv) {
+    struct termios tio;
     struct winsize ws;
     const char *term;
 
@@ -246,6 +264,18 @@ static void child_exec(char **argv) {
     reset_default(SIGTERM);
     reset_default(SIGCHLD);
     if (sigprocmask(SIG_SETMASK, &g_parent_mask, NULL) != 0) {
+        _exit(127);
+    }
+
+    /* OPOST stays on. Only the newline-to-CR-LF translation is turned off,
+     * before the child writes anything. */
+    if (tcgetattr(STDIN_FILENO, &tio) != 0) {
+        dprintf(g_diag, "stn-pty: tcgetattr: %s\n", strerror(errno));
+        _exit(127);
+    }
+    tio.c_oflag &= ~(tcflag_t)ONLCR;
+    if (tcsetattr(STDIN_FILENO, TCSANOW, &tio) != 0) {
+        dprintf(g_diag, "stn-pty: tcsetattr: %s\n", strerror(errno));
         _exit(127);
     }
 
@@ -526,7 +556,7 @@ int main(int argc, char **argv) {
     memset(&ws, 0, sizeof ws);
     ws.ws_row = STN_ROWS;
     ws.ws_col = STN_COLS;
-    /* NULL termios: slave keeps kernel defaults (ICANON, ECHO, ONLCR, ICRNL). */
+    /* NULL termios: kernel defaults. The child clears ONLCR before exec. */
     pid = forkpty(&master, NULL, NULL, &ws);
     if (pid < 0) {
         dprintf(STDERR_FILENO, "stn-pty: forkpty: %s\n", strerror(errno));
@@ -547,7 +577,7 @@ int main(int argc, char **argv) {
 
     g_child_pid = (sig_atomic_t)pid;
     if (g_forward > 0) {
-        (void)kill(pid, (int)g_forward);
+        signal_child(pid, (int)g_forward);
         g_forward = 0;
     }
 

@@ -229,13 +229,14 @@ grep -qx 'isatty2=1' /tmp/info.txt || fail "fd 2 is not a tty"
 grep -qx 'TERM=xterm' /tmp/info.txt || fail "unset TERM did not become xterm"
 grep -qx 'LANG=C.UTF-8' /tmp/info.txt || fail "LANG was rewritten"
 grep -qx 'LC_ALL=C.UTF-8' /tmp/info.txt || fail "LC_ALL was rewritten"
-grep -qx 'SIZE=50 200' /tmp/info.txt || fail "window is not 50x200"
-grep -q 'rows 50;' /tmp/info.txt || fail "stty rows"
-grep -q 'columns 200;' /tmp/info.txt || fail "stty columns"
-for flag in opost onlcr icanon icrnl isig; do
+grep -qx 'SIZE=30 80' /tmp/info.txt || fail "window is not 30x80"
+grep -q 'rows 30;' /tmp/info.txt || fail "stty rows"
+grep -q 'columns 80;' /tmp/info.txt || fail "stty columns"
+for flag in opost icanon icrnl isig; do
   grep -Eq "(^|[[:space:]])${flag}([[:space:]]|$)" /tmp/info.txt || fail "missing $flag"
 done
-for flag in -opost -onlcr -icanon -icrnl; do
+grep -Eq '(^|[[:space:]])-onlcr([[:space:]]|$)' /tmp/info.txt || fail "ONLCR is still on"
+for flag in -opost -icanon -icrnl; do
   if grep -Eq "(^|[[:space:]])${flag}([[:space:]]|$)" /tmp/info.txt; then
     fail "raw-mode flag present: $flag"
   fi
@@ -266,8 +267,11 @@ echo "PASS term rules"
 echo "==== ONLCR and Enter byte 0x0a ===="
 /tmp/stn-pty /bin/echo hello </dev/null > /tmp/echo.out
 od -An -tx1 /tmp/echo.out | tee /tmp/echo.hex
-grep -q '68 65 6c 6c 6f 0d 0a' /tmp/echo.hex || fail "echo output was not CR LF"
-echo "PASS onlcr"
+grep -q '68 65 6c 6c 6f 0a' /tmp/echo.hex || fail "echo output was not LF"
+if grep -q '0d' /tmp/echo.hex; then
+  fail "echo output still contains CR"
+fi
+echo "PASS onlcr off, echo is lf"
 
 rm -f /tmp/bytes.in
 mkfifo /tmp/bytes.in
@@ -328,13 +332,19 @@ echo "selfkill_rc=$skrc"
 echo "PASS signal status 137"
 
 signal_forward() {
-  local sig=$1 needle=$2 expect=$3 outfile=/tmp/sig-$1.out h cpid rc
+  local sig=$1 needle=$2 expect=$3 absent=$4 outfile=/tmp/sig-$1.out h cpid rc
   /tmp/stn-pty /tmp/child.sh signals </dev/null > "$outfile" &
   h=$!
   track "$h"
   wait_for "$outfile" ready
   cpid=$(strip "$outfile" | sed -n 's/^pid://p' | head -1)
   kill -0 "$cpid"
+  sigblk=$(awk '/^SigBlk:/{print $2}' "/proc/$cpid/status")
+  echo "child_sigblk=$sigblk"
+  # SIGINT is bit 1, SIGTERM is bit 14. A blocked bit would queue the signal forever.
+  if [ $((0x$sigblk & 0x4002)) -ne 0 ]; then
+    fail "SIGINT or SIGTERM is blocked in the child ($sigblk)"
+  fi
   kill -s "$sig" "$h"
   set +e
   wait "$h"
@@ -343,6 +353,9 @@ signal_forward() {
   echo "forward_${sig}_rc=$rc"
   strip "$outfile" | tee "${outfile}.txt"
   grep -qx "$needle" "${outfile}.txt" || fail "$sig was not delivered to the child"
+  if [ -n "$absent" ] && grep -qx "$absent" "${outfile}.txt"; then
+    fail "$sig was delivered as $absent"
+  fi
   if grep -q got-sighup "${outfile}.txt"; then
     fail "$sig path delivered SIGHUP"
   fi
@@ -353,9 +366,9 @@ signal_forward() {
   echo "PASS forward $sig"
 }
 
-echo "==== SIGTERM and SIGINT forwarded ===="
-signal_forward TERM got-sigterm 7
-signal_forward INT got-sigint 6
+echo "==== SIGTERM becomes SIGINT, SIGINT stays SIGINT ===="
+signal_forward TERM got-sigint 6 got-sigterm
+signal_forward INT got-sigint 6 got-sigterm
 echo "PASS signals forwarded"
 
 echo "==== stdin EOF leaves the child running ===="
@@ -475,7 +488,7 @@ preload_case() {
   grep -qx "LD_PRELOAD=$expect" "${outfile}.txt" || fail "child LD_PRELOAD ($label)"
   grep -qx 'STN_PTY_SAVED_PRELOAD=<unset>' "${outfile}.txt" || fail "saved preload leaked ($label)"
   grep -qx 'STN_PTY_REEXECED=<unset>' "${outfile}.txt" || fail "reexec marker leaked ($label)"
-  kill -TERM "$h" 2>/dev/null || true
+  kill -KILL "$h" 2>/dev/null || true
   set +e
   wait "$h"
   set -e
