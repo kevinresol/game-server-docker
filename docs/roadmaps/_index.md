@@ -2,7 +2,7 @@
 
 ## Ready
 
-- `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — Executable; S5 revise approved. S7 re-runs live acceptance. D1 uses a 15s stop timeout because this daemon's default grace is about 3s.
+- `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — Executable; S5 approved. S7 rechecks C2 by copying the log file and sampling stdout after the container stops. Docker holds a no-newline tail until then.
 
 ## Not Ready
 
@@ -14,7 +14,7 @@ None.
 
 ## Claimed-by
 
-- `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — execute-all-roadmaps orchestrator (2026-10-23). S5 revise is approved. S7 re-runs live acceptance.
+- `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — execute-all-roadmaps orchestrator (2026-10-23). S5 is approved. S7 rechecks C2 after stdout closes.
 
 ## Human actions needed
 

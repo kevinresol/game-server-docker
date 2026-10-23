@@ -1,6 +1,6 @@
 # Stationeers Console Shim — Task Map
 
-**Status:** Ready — Executable. S5 revise is approved. S7 re-runs live acceptance.
+**Status:** Ready — Executable. S7 is blocked on C2 until it samples stdout after the container stops. S5 is approved.
 
 ## Goal (locked)
 
@@ -365,6 +365,10 @@ Verdict: approve. `stn-s4-wiring:local` keeps the four `__Internal` entries and 
 
 **Depends on:** S1 approved (uses the frozen helper contract)
 
+S7 on 2026-10-23, after the callback tee, still blocked on C2. The image contained that bundle (`tool.js` sha256 `ba8f352d141a4b038e566cede55be38ea54a033f4dc7776c2882e7787d88e445`). Across about 15s, `docker logs` stdout stayed 63216 bytes and the log file stayed 63444. The file starts with that stdout and then 228 bytes (`ESC[39;49m ESC[37m ESC[48;1H`, spaces, `ESC[48;1H> `) that `docker logs` never gained. Evidence: `stn-diag/20261023T060826Z/`.
+
+**Orchestrator — S5 — 2026-10-23.** `fs.writeSync(1)` did not close the gap. With `--log-driver=json-file`, json stdout equaled `docker logs` and the file stayed 408 bytes ahead with no trailing newline (`stn-diag/20261023T063432Z/`). Those bytes are a prompt redraw, an OSC title, and two BOMs. Zero partial json records, and the lengths were unchanged 10s later. Next check: copy the log file, then stop the container so stdout gets EOF, and see whether the json log then gains that suffix. If it does, Docker was holding a trailing line that has no newline, and the idle compare is the failure.
+
 S7's live re-run on 2026-10-23 blocked here. C2: the `--log-file` bytes are container stdout plus one 228-byte prompt redraw that `docker logs` never shows (`stn-diag/20261023T045150Z/`). D1: `docker stop` kills the container with 137 in about 3.6s. The game logs `Ending network connection`, the wrapper never logs `Server process exited`, and a control that ignores SIGTERM is killed at about 3.2s, so this daemon's stop grace is about 3s. Measure a longer `docker stop -t` before changing the signal path.
 
 **Files:** `games/stationeers/tool/command/run/handler.ts`, `games/stationeers/tool/command/run/command.ts`, `games/stationeers/tool/command/run/handler.test.ts`
@@ -406,6 +410,16 @@ Verdict: approve. The wrapper spawns `stn-pty` with inherited stdin, tees identi
 #### Reviewer — S5 revise — 2026-10-23
 
 Verdict: approve. `forwardStdout` writes each helper stdout chunk with `process.stdout.write(buf, onWritten)` and appends that same buffer to `--log-file` only inside the callback when the write reports no error. A `false` return pauses the helper until `drain`, so the file stays behind a stalled stdout. `proc.stderr.pipe(process.stderr)` leaves stderr out of the log file. The test `does not append a stdout chunk the sink has not accepted` withholds the second write callback and fails with `log file contains a chunk the stdout sink never accepted` on the old split. The same file still rejects `-logfile`, `-logFile`, and `-LOGFILE`, adds a single `-noclear`, sets `LD_PRELOAD` only on the child, and maps SIGTERM to SIGINT. The signal handler is still `process.on("SIGTERM", () => proc.kill("SIGINT"))`. `startPlayerLog()` still returns immediately, and `playerLog.stop()` still runs on the helper `close`. The diff stays in `handler.ts`, `handler.test.ts`, and `command.ts`. On throwaway `stn-s5-stop`, `docker stop -t 30` sent SIGTERM and the container exited 143 about 10s later (`OOMKilled` false); the wrapper logged `Server process exited with code:  0`. Residual for S7: this daemon's default stop grace is about 3s, so a default `docker stop` still kills the game (S7 recorded exit 137 in about 3.6s). A stop timeout of at least 10s lets it exit. That grace sits outside this code change. `pnpm exec tsc --noEmit --pretty false` exited 0. Handler tests: 15 pass, 0 fail.
+
+**Implementor — S5 — 2026-10-23.** Reopened for the C2 tail. `stationeers` stayed `exited 2026-10-22T11:39:53.851256288Z` at start and end. Throwaway `stn-s5-c2` only (volume `stn-s5-c2-vol` chowned `steam:steam`, image `stn-s5-c2:local`). This daemon's default log driver is `local` and `.LogPath` is empty, so both compares set `--log-driver=json-file` and read that file through `/proc/1/root`. Credentials are `redacted`. Evidence: `stn-diag/20261023T063432Z/`.
+
+Before the tee change, bundle sha256 `ba8f352d141a4b038e566cede55be38ea54a033f4dc7776c2882e7787d88e445`. After Ready: `docker logs` stdout 63447, json-log stdout 63447, `/home/steam/stationeers.log` 63855. The json-log stdout equaled `docker logs`. The file was ahead by 408 bytes with no trailing newline (`ESC[39;49m`, `ESC[37m`, `ESC[48;1H`, spaces, `ESC[48;1H`, an OSC title, two UTF-8 BOMs). Partial json records: 0. Stderr was 271 and is not that suffix. That is the writeSync path.
+
+`forwardStdout` copies each chunk with `Buffer.from` and writes it with `fs.writeSync(1)`, looping on a short write. `EAGAIN` waits 1ms and retries. `--log-file` is appended only with the prefix `writeSync` returned, not from a callback. Stderr stays off the file. A `writeSync` that returns 0 leaves that chunk out of the file; the handler test covers that. SIGTERM still maps to SIGINT on the helper. The Player.log hook is unchanged. `pnpm exec tsc --noEmit --pretty false` exited 0. Handler tests: 15 pass, 0 fail. esbuild wrote `477.6kb`. `git diff --check` exited 0.
+
+Rebuilt image, `/home/steam/tool.js` sha256 `6c5b0cf5fe13022ec1b51d238849687082239f39f39b537d9832eef408076af1`. After Ready: `docker logs` stdout 63451, json-log stdout 63451, stationeers log 63859. Json stdout still equaled `docker logs`, and the file was still ahead by 408 bytes (same suffix shape, no newline, 0 partial records). Ten seconds later those three lengths were unchanged. The pass (json-log stdout equal to the stationeers file) was not met. Removed container `stn-s5-c2`, volume `stn-s5-c2-vol`, and tag `stn-s5-c2:local`. S5 stays in_progress.
+
+**Implementor — S5 — 2026-10-23.** Docker holds a no-newline tail until EOF, so an idle C2 compare is not a tee bug. S7 must copy the log file and then sample stdout after the container stops (or after another newline). `stationeers` stayed `exited 2026-10-22T11:39:53.851256288Z` at start and end. Throwaway `stn-s5-flush` only (volume `stn-s5-flush-vol` chowned `steam:steam`, image `stn-s5-flush:local`, `--log-driver=json-file`, `--log-file /home/steam/stationeers.log`, `-file start MarsBase Mars2 Normal`, settings redacted). Evidence: `stn-diag/20261023T065117Z/`. Bundle sha256 `6c5b0cf5fe13022ec1b51d238849687082239f39f39b537d9832eef408076af1`. After Ready the copied file was 63446 bytes and idle json stdout was 63218. The gap was 228 bytes with no newline (prompt redraw: `ESC[39;49m`, `ESC[37m`, `ESC[48;1H`, spaces, `ESC[48;1H> `) and 0 partial records. That is the prompt-redraw part of the earlier 408-byte tail; the OSC title and two BOMs had not been written yet. `docker cp` ran before `docker stop -t 15`. The container exited 0 (`OOMKilled` false). Final json stdout, read through `/proc/1/root` after the stop, was 77227 bytes. The copied file is a prefix of that stdout, and the 228-byte tail is in it. Shutdown then added 13781 bytes, including `Ending network connection` and `Server process exited with code:  0`. Removed container `stn-s5-flush`, volume `stn-s5-flush-vol`, and tag `stn-s5-flush:local`. Restored `handler.ts` and `handler.test.ts` to HEAD (callback tee). Product diff is empty. S5 status approved.
 
 ---
 
@@ -455,11 +469,11 @@ Verdict: approve. The tail prefers `~/.config/unity3d/Rocketwerkz/rocketstation/
 
 #### Implementor checklist
 
-- [x] Build the full image locally and run only throwaway containers with random credentials, a throwaway save, and no published ports unless needed.
-- [x] Verify Acceptance A1 (grep both container output and `Player.log`), B1, B2, B3 (both the `-i` EOF and no-`-i` cases), B4, C1 (via `/proc/<pid>/cmdline`), C2, C3, C4, D1, D2 and F1; record command, output excerpt (credentials redacted), and result for each.
-- [x] If a scenario fails, record evidence and mark S7 blocked rather than patching files outside this task's scope; report the failing owner task.
-- [x] For F1, sample the game's CPU for 60 s with the console active and compare against the S1 direct-spawn baseline; for D1, record the observed stop time and the container exit code.
-- [x] Clean up all containers, volumes, and images created, and list what was removed.
+- [ ] Build the full image locally and run only throwaway containers with random credentials, a throwaway save, and no published ports unless needed.
+- [ ] Verify Acceptance A1 (grep both container output and `Player.log`), B1, B2, B3 (both the `-i` EOF and no-`-i` cases), B4, C1 (via `/proc/<pid>/cmdline`), C2, C3, C4, D1, D2 and F1; record command, output excerpt (credentials redacted), and result for each.
+- [ ] If a scenario fails, record evidence and mark S7 blocked rather than patching files outside this task's scope; report the failing owner task.
+- [ ] For F1, sample the game's CPU for 60 s with the console active and compare against the S1 direct-spawn baseline; for D1, record the observed stop time and the container exit code.
+- [ ] Clean up all containers, volumes, and images created, and list what was removed.
 
 #### Reviewer checklist
 
@@ -509,6 +523,25 @@ The user chose the stdin byte cache on 2026-10-23. S7 stays pending until S9 is 
 - F1 pass. Idle, no clients, console active, 60.0s: `process_cpu=29.4% of one core` (limit 42.5). Hottest thread `rocketstation_D` at 13.4%.
 
 Cleanup removed containers `stn-s7-d87976-chown-c3a`, `stn-s7-d87976-c3a`, `stn-s7-d87976-chown-c3b`, `stn-s7-d87976-c3b`, `stn-s7-d87976-chown-a1`, `stn-s7-d87976-a1`, `stn-s7-d87976-chown-b2`, `stn-s7-d87976-b2`, `stn-s7-d87976-chown-b3eof`, `stn-s7-d87976-b3eof`, `stn-s7-d87976-chown-b3null`, `stn-s7-d87976-b3null`, `stn-s7-d87976-chown-c2`, `stn-s7-d87976-c2`, `stn-s7-d87976-chown-f1`, `stn-s7-d87976-f1`, `stn-s7-re-chown-c2`, `stn-s7-re-c2`, `stn-s7-re-chown-d1`, `stn-s7-re-d1`, and `stn-s7-grace`; volumes `stn-s7-vol-d87976-c3a`, `stn-s7-vol-d87976-c3b`, `stn-s7-vol-d87976-a1`, `stn-s7-vol-d87976-b2`, `stn-s7-vol-d87976-b3eof`, `stn-s7-vol-d87976-b3null`, `stn-s7-vol-d87976-c2`, `stn-s7-vol-d87976-f1`, `stn-s7-vol-re-c2`, and `stn-s7-vol-re-d1`; and tag `stn-s7-live:local` (`docker rmi` rc 0). Retained `stn-s4-wiring:local` (`7f28c086e535`). No `docker system prune`. No `stn-s7-` container, volume, or that tag remains.
+
+**Implementor — S7 re-run start — 2026-10-23.** Fresh live pass on master `f1e5d60` after the approved S5 tee fix. The checked boxes and the Implementor — S7 paragraphs above are the earlier images. They are not this pass. Throwaway names stay `stn-s7-`. No product code edits. D1 uses `docker stop -t 15`. C2 samples stdout against `--log-file` for about 15s.
+
+**Implementor — S7 — 2026-10-23.** Fresh live pass on master `f1e5d60` after the S5 tee fix. Image `stn-s7-live:local` (`linux/amd64`), built with `pnpm eval build-game-tool --game=stationeers` then `docker build --platform=linux/amd64 --file=games/stationeers/Dockerfile games/stationeers`. The Steam `app_update` layer stayed cached. `COPY dist/tool.js` was a cache hit of this same bundle: host and image `/home/steam/tool.js` are 231646 bytes, sha256 `ba8f352d141a4b038e566cede55be38ea54a033f4dc7776c2882e7787d88e445`, and that bundle appends `--log-file` only inside the `process.stdout.write` callback. `kevinresol/stationeers-dedicated-server:latest` stayed `9d04d44d2cd6`. Evidence: `stn-diag/20261023T060826Z/`. Credentials are `redacted`. `stationeers` stayed `exited 2026-10-22T11:39:53.851256288Z` at start and end. No product files were patched. Status blocked. Owner S5 (C2).
+
+- A1 pass. `docker run -i`, no log flag, `-file start MarsBase Mars2 Normal` plus settings. Logs contain `RakNet successfully hosted with Address: 172.17.0.2:27016` and `Ready`. No `EntryPointNotFoundException` or `DllNotFoundException` for `SetConsoleOutputCP`/`SetConsoleCP`. `Player.log` was absent.
+- B1 pass. After Ready, one write of `save stnshim1` plus a newline on `docker run -i`. `/data/stnshim1/stnshim1.save` appeared (18153 bytes). The console showed `save stnshim1` and `Saving -`.
+- B2 pass. `docker run -it`. Ten seconds after Ready, one write of `help` plus a newline. The list includes `Tags: [launch]` and `Displays helpful stuff`.
+- B3 pass. After `docker run -i`, closing stdin left the game running and `stn-pty` at 0.0% of one core over 5s. `docker run` with no `-i` did the same (0.0%).
+- B4 pass. On `docker run -i`, Node wrapper fd 0 was `pipe:[461]`, not `/dev/null`.
+- C1 pass. With and without `--log-file /home/steam/stationeers.log`, the game cmdline had neither `-logfile` nor `-logFile`, and it included `-noclear`. The with-flag run invoked `node /home/steam/tool.js run --log-file /home/steam/stationeers.log --` because `entrypoint.sh` places container args after `--`.
+- C2 fail, owner S5. Nineteen samples across about 15s. Container stdout stayed 63216 bytes and the file stayed 63444. The file starts with that stdout and then 228 bytes no later `docker logs` snapshot gained: `ESC[39;49m`, `ESC[37m`, `ESC[48;1H`, spaces, `ESC[48;1H> `. Stdout still contains `RakNet successfully hosted` and `Ready`. Stderr was 271 bytes and is not that suffix.
+- C3 pass. `-logfile x` and `-logFile -` each exited 1 in 0.6s and 0.5s. The error names `--log-file` and `GAME_LOG_FILE`. The game did not start.
+- C4 not verifiable. No `Player.log`. Stderr once: `Player.log was not found under ~/.config/unity3d; Unity's file log will not be mirrored`.
+- D1 pass. After Ready, `docker stop -t 15` returned in 3.5s (`docker stop` rc 0). Container exit 143, `OOMKilled` false. Events: `kill` signal 15, then `die` exit 143. Logs contain `Ending network connection` and `Server process exited with code:  0`.
+- D2 pass. No entrypoint `set -x` lines. Wrapper argv lines and game `Changed setting` lines are `redacted` in the evidence.
+- F1 pass. Idle, no clients, console active, 60.0s: `process_cpu=31.7% of one core` (limit 42.5). Hottest thread `rocketstation_D` at 15.2%.
+
+Cleanup removed containers `stn-s7-3d5cfc-chown-c3a`, `stn-s7-3d5cfc-c3a`, `stn-s7-3d5cfc-chown-c3b`, `stn-s7-3d5cfc-c3b`, `stn-s7-3d5cfc-chown-a1`, `stn-s7-3d5cfc-a1`, `stn-s7-3d5cfc-chown-b2`, `stn-s7-3d5cfc-b2`, `stn-s7-3d5cfc-chown-b3eof`, `stn-s7-3d5cfc-b3eof`, `stn-s7-3d5cfc-chown-b3null`, `stn-s7-3d5cfc-b3null`, `stn-s7-3d5cfc-chown-c2`, `stn-s7-3d5cfc-c2`, `stn-s7-3d5cfc-chown-f1`, and `stn-s7-3d5cfc-f1`; volumes `stn-s7-vol-3d5cfc-c3a`, `stn-s7-vol-3d5cfc-c3b`, `stn-s7-vol-3d5cfc-a1`, `stn-s7-vol-3d5cfc-b2`, `stn-s7-vol-3d5cfc-b3eof`, `stn-s7-vol-3d5cfc-b3null`, `stn-s7-vol-3d5cfc-c2`, and `stn-s7-vol-3d5cfc-f1`; and tag `stn-s7-live:local` (`docker rmi` rc 0). The earlier `stn-s7-hash` cat container was removed with `--rm`. Retained `stn-s4-wiring:local` (`7f28c086e535`). No `docker system prune`. No `stn-s7-` container, volume, or that tag remains.
 
 ---
 
