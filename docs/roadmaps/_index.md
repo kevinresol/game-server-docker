@@ -2,7 +2,7 @@
 
 ## Ready
 
-- `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — Executable; S1 through S6 approved; F1 confirmed at 15 percentage points; S7 next
+None.
 
 ## Not Ready
 
@@ -10,15 +10,15 @@
 
 ## Blocked
 
-None.
+- `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — S7 blocked on B1 (2026-10-23). One write of `save stnshim1` plus a newline does not reach the game. The same line sent one byte at a time creates the save. Owner S3. S8 waits on S7.
 
 ## Claimed-by
 
-- `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — execute-all-roadmaps orchestrator (2026-10-23). README roadmap T3 is complete, so S8 is no longer waiting on that Stationeers README edit.
+None. The console-shim claim was cleared when S7 was parked.
 
 ## Human actions needed
 
-None. F1 CPU threshold for `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` was confirmed at 15 percentage points on 2026-10-23.
+- Opened 2026-10-23. Roadmap `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md`, residual S7 B1 / S3 pacing. Action: choose whether to reopen S3 so a whole stdin line reaches the game, or change B1 and keep the no-pacing contract. Unblocks S7 and then S8. Requested by the execute-all-roadmaps orchestrator.
 
 ## Dependency sketch
 

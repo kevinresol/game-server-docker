@@ -1,6 +1,6 @@
 # Stationeers Console Shim — Task Map
 
-**Status:** Ready — Executable.
+**Status:** Blocked — S7. A single stdin line does not reach the game.
 
 ## Goal (locked)
 
@@ -438,7 +438,7 @@ Verdict: approve. The tail prefers `~/.config/unity3d/Rocketwerkz/rocketstation/
 
 ### S7 — Live integration verification
 
-**Status:** pending
+**Status:** blocked
 
 **Depends on:** S4, S5, S6 approved
 
@@ -446,11 +446,11 @@ Verdict: approve. The tail prefers `~/.config/unity3d/Rocketwerkz/rocketstation/
 
 #### Implementor checklist
 
-- [ ] Build the full image locally and run only throwaway containers with random credentials, a throwaway save, and no published ports unless needed.
+- [x] Build the full image locally and run only throwaway containers with random credentials, a throwaway save, and no published ports unless needed.
 - [ ] Verify Acceptance A1 (grep both container output and `Player.log`), B1, B2, B3 (both the `-i` EOF and no-`-i` cases), B4, C1 (via `/proc/<pid>/cmdline`), C2, C3, C4, D1, D2 and F1; record command, output excerpt (credentials redacted), and result for each.
-- [ ] If a scenario fails, record evidence and mark S7 blocked rather than patching files outside this task's scope; report the failing owner task.
+- [x] If a scenario fails, record evidence and mark S7 blocked rather than patching files outside this task's scope; report the failing owner task.
 - [ ] For F1, sample the game's CPU for 60 s with the console active and compare against the S1 direct-spawn baseline; for D1, record the observed stop time and the container exit code.
-- [ ] Clean up all containers, volumes, and images created, and list what was removed.
+- [x] Clean up all containers, volumes, and images created, and list what was removed.
 
 #### Reviewer checklist
 
@@ -460,7 +460,23 @@ Verdict: approve. The tail prefers `~/.config/unity3d/Rocketwerkz/rocketstation/
 
 #### Agent log
 
-<!-- implementor / reviewer append below -->
+Pack four-pack. Coder starting 2026-10-23 on master `c47408c`. Live checks use throwaway containers only. Do not touch the user's `stationeers` container. F1 limit is 42.5% of one core (S1 baseline 27.5% plus 15 points).
+
+Implementor — S7. Image `stn-s7-live:local` (`linux/amd64`, built from `games/stationeers/Dockerfile` after `pnpm eval build-game-tool --game=stationeers`; Steam layer reused from cache). Tag removed when the run finished. `kevinresol/stationeers-dedicated-server` was not retagged. `stationeers` stayed `exited 2026-10-22T11:39:53.851256288Z`. B1 failed, owner S3. Status blocked. No product files were patched. Evidence is under `stn-diag/20261023T013258Z/` with credentials written as redacted.
+
+- A1 pass. `docker run -i` with `-file start MarsBase Mars2 Normal` and `-settings ServerPassword redacted ServerAuthSecret redacted`. Docker logs contain `RakNet successfully hosted with Address: 172.17.0.2:27016` and `Ready`. No `EntryPointNotFoundException` or `DllNotFoundException` for `SetConsoleOutputCP`/`SetConsoleCP`. `Player.log` was absent.
+- B1 fail, owner S3. After Ready, one write of `save stnshim1` plus a newline on `docker run -i` produced no console echo and no `/data/stnshim1/stnshim1.save` within 90s. MarsBase had already been created on that volume. A separate diagnostic that wrote the same line one byte every 30ms created `/data/stnshim1/stnshim1.save` (18323 bytes) and logged `Starting NewSave for stnshim1`. Stopped after this failure, so B2, B3, C1 with `--log-file`, C2, and D1 were not run.
+- B4 pass. On `docker run -i`, Node wrapper fd 0 was `pipe:[21356]`.
+- C1 pass without `--log-file`. Game cmdline: `-file start MarsBase Mars2 Normal -settings ServerPassword redacted ServerAuthSecret redacted -noclear`. No `-logfile` or `-logFile`.
+- C3 pass. `-logfile x` and `-logFile -` each exited 1 in under a second. Stderr: `Do not specify -logfile manually in the rest arguments, use the --log-file flag or GAME_LOG_FILE env var instead.` The game did not start.
+- C4 not verifiable. No `Player.log`. Stderr warning once: `Player.log was not found under ~/.config/unity3d; Unity's file log will not be mirrored`.
+- D2 pass. No entrypoint `set -x` lines. The wrapper argv echo and the game `Changed setting` lines contain the password and secret; those lines are redacted in the evidence.
+- F1 pass. Idle server, no clients, console active, 60s: `process_cpu=28.0% of one core` (limit 42.5). Hottest thread `rocketstation_D` at 12.6%.
+- D1 not run. No stop time or exit code.
+
+Cleanup removed every `stn-s7-*` container and `stn-s7-vol-*` volume this task created, and removed the `stn-s7-live:local` tag. Retained `stn-s4-wiring:local` (`7f28c086e535`). No `docker system prune`. `stationeers` was not started, stopped, or modified.
+
+**Orchestrator — S7 — 2026-10-23.** Hard block. Acceptance B1 requires one write of `save stnshim1` plus a newline. The approved S3 contract does not require pacing, and that write does not reach the game. The same line sent one byte at a time does. Unblocks if S3 is reopened so a whole stdin line is delivered in a way Mono accepts, or if B1 is changed. S8 stays pending.
 
 ---
 
