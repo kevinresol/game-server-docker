@@ -311,6 +311,10 @@ Verdict: approve. `kernel32_shim.c` exports `SetConsoleOutputCP` and `SetConsole
 
 Pack four-pack. Coder starting 2026-10-23 in worktree `roadmap/stationeers-console-shim/S3`. Enter byte is `\n`. Leave kernel terminal defaults; do not call `cfmakeraw`.
 
+**Implementor — S3 — 2026-10-23.** `stn_pty.c` and `stn_pty_test.sh` only, uncommitted. `forkpty`, no `cfmakeraw`, window 200x50, `TERM=xterm` when unset or `dumb`, Enter copied as `\n`. Stdin EOF drops fd 0 and does not close the master. `SIGINT`/`SIGTERM` forwarded; exit is the child's or `128+n`. Helper re-execs so it is not preloaded; the child keeps `LD_PRELOAD` with the helper path removed. Throwaway `gcc:13`, `docker run -i` without `-t`: `ALL_PASS`. Child fds 0/1/2 were a PTY. EOF left the child running at 0 CPU ticks over 3s. Residual: a whole line in one PTY write is still unproved against Mono. `stationeers` stayed exited at `2026-10-22T11:39:53.851256288Z`.
+
+**Cleaner — S3 — 2026-10-23.** No changes. `stn_pty.c` and `stn_pty_test.sh` already match the frozen contract. The gcc container was not re-run.
+
 ---
 
 ### S4 — Dockerfile and entrypoint wiring
@@ -344,7 +348,7 @@ Pack four-pack. Coder starting 2026-10-23 in worktree `roadmap/stationeers-conso
 
 ### S5 — Wrapper: spawn through `stn-pty`, tee, log-flag rules
 
-**Status:** in_progress
+**Status:** approved
 
 **Depends on:** S1 approved (uses the frozen helper contract)
 
@@ -352,27 +356,35 @@ Pack four-pack. Coder starting 2026-10-23 in worktree `roadmap/stationeers-conso
 
 #### Implementor checklist
 
-- [ ] Spawn `${STN_PTY_BIN ?? "/home/steam/shim/stn-pty"} <game binary> <args>` with `stdio: ['inherit', 'pipe', 'pipe']`, setting `LD_PRELOAD=/home/steam/shim/libkernel32-shim.so` (joined with any existing value) in the child environment only. Pipe helper stdout to `process.stdout` and tee it into the log file; forward helper stderr to `process.stderr`. Resolve the run promise on the child's `close` event, not `exit`.
-- [ ] Choose and test one normalization rule for the tee file versus stdout (identical bytes, or the same stripping applied to both), per scenario C2.
-- [ ] Stop appending `-logfile`. Reject (case-insensitive) a user-supplied `-logfile` or `-logFile` with an error pointing to `--log-file`/`GAME_LOG_FILE`.
-- [ ] Add `-noclear` unless already present.
-- [ ] With `--log-file`: ensure the file exists, tee console output into it (append), and delete it on exit as today. Remove the `tail -f` subprocess.
-- [ ] Preserve `SIGTERM` → `SIGINT` forwarding (target is the helper, which forwards it) and the exit-code logging/reject-on-non-zero behavior.
-- [ ] Update the command description in `command.ts` to describe the real behavior (stdin console, `--log-file` tee) and remove the stale autosave sentence.
-- [ ] Remove the dead commented-out `autosavecancel` block (cleanup lane).
-- [ ] Add tests with a fake helper and a fake game script (via `STN_PTY_BIN`): arg list contains no log flags and has `-noclear`; manual log flag rejected in both spellings; tee matches stdout per the chosen rule; fd 0 of the helper is inherited from the wrapper (a fake helper asserts it is not a pipe created by Node); `LD_PRELOAD` is set for the child only; the log file is not deleted before the last output is flushed; SIGTERM maps to SIGINT; exit code handling. Tests must not depend on source-text assertions only.
-- [ ] Run tsc, focused tests, esbuild bundle, and `git diff --check`; paste results in the Agent log.
+- [x] Spawn `${STN_PTY_BIN ?? "/home/steam/shim/stn-pty"} <game binary> <args>` with `stdio: ['inherit', 'pipe', 'pipe']`, setting `LD_PRELOAD=/home/steam/shim/libkernel32-shim.so` (joined with any existing value) in the child environment only. Pipe helper stdout to `process.stdout` and tee it into the log file; forward helper stderr to `process.stderr`. Resolve the run promise on the child's `close` event, not `exit`.
+- [x] Choose and test one normalization rule for the tee file versus stdout (identical bytes, or the same stripping applied to both), per scenario C2.
+- [x] Stop appending `-logfile`. Reject (case-insensitive) a user-supplied `-logfile` or `-logFile` with an error pointing to `--log-file`/`GAME_LOG_FILE`.
+- [x] Add `-noclear` unless already present.
+- [x] With `--log-file`: ensure the file exists, tee console output into it (append), and delete it on exit as today. Remove the `tail -f` subprocess.
+- [x] Preserve `SIGTERM` → `SIGINT` forwarding (target is the helper, which forwards it) and the exit-code logging/reject-on-non-zero behavior.
+- [x] Update the command description in `command.ts` to describe the real behavior (stdin console, `--log-file` tee) and remove the stale autosave sentence.
+- [x] Remove the dead commented-out `autosavecancel` block (cleanup lane).
+- [x] Add tests with a fake helper and a fake game script (via `STN_PTY_BIN`): arg list contains no log flags and has `-noclear`; manual log flag rejected in both spellings; tee matches stdout per the chosen rule; fd 0 of the helper is inherited from the wrapper (a fake helper asserts it is not a pipe created by Node); `LD_PRELOAD` is set for the child only; the log file is not deleted before the last output is flushed; SIGTERM maps to SIGINT; exit code handling. Tests must not depend on source-text assertions only.
+- [x] Run tsc, focused tests, esbuild bundle, and `git diff --check`; paste results in the Agent log.
 
 #### Reviewer checklist
 
-- [ ] The game process can never receive a log flag, via any path (user args, env, option).
-- [ ] stdout/stderr behavior is unchanged when `--log-file` is set.
-- [ ] Signal and exit behavior match the pre-change behavior; no new shutdown flows.
-- [ ] Scope limited to the listed files; the dead-code removal is behavior-neutral.
+- [x] The game process can never receive a log flag, via any path (user args, env, option).
+- [x] stdout/stderr behavior is unchanged when `--log-file` is set.
+- [x] Signal and exit behavior match the pre-change behavior; no new shutdown flows.
+- [x] Scope limited to the listed files; the dead-code removal is behavior-neutral.
 
 #### Agent log
 
 Pack four-pack. Coder starting 2026-10-23 in worktree `roadmap/stationeers-console-shim/S5`. Helper contract is frozen. Do not tail `Player.log` here.
+
+**Implementor — S5 — 2026-10-23.** Uncommitted in `roadmap/stationeers-console-shim/S5`. Spawns `stn-pty` with `stdio: ['inherit','pipe','pipe']`, sets `LD_PRELOAD` on the child only, and settles on `close`. C2 rule is identical bytes: helper stdout is copied unchanged to process stdout and appended to `--log-file`. The wrapper never appends `-logfile` and rejects an exact `-logfile`/`-logFile` token in any case. Adds `-noclear` unless present. `tail -f` is gone. SIGTERM still sends SIGINT to the helper. `tsc`, 14 handler tests, esbuild, and `git diff --check` passed. Residual: a one-token `-logfile=/path` is not rejected. `Player.log` remains S6.
+
+**Cleaner — S5 — 2026-10-23.** No changes. The `autosavecancel` block and the stale autosave sentence are already gone. Verify commands were not rerun.
+
+#### Reviewer — S5 — 2026-10-23
+
+Verdict: approve. The wrapper spawns `stn-pty` with inherited stdin, tees identical console bytes when `--log-file` is set, rejects an exact `-logfile` token, and still turns SIGTERM into SIGINT. Residual: a one-token `-logfile=/path` is still forwarded. That is outside C3, whose examples are the separate tokens `-logfile x` and `-logFile -`.
 
 ---
 

@@ -1,80 +1,80 @@
 import { HandlerInput } from "@why-ts/cli";
 import { spawn } from "node:child_process";
 import { appendFile } from "node:fs/promises";
-import { match } from "ts-pattern";
 import fs from "node:fs";
+
+const DEFAULT_PTY_BIN = "/home/steam/shim/stn-pty";
+const SHIM_LIBRARY = "/home/steam/shim/libkernel32-shim.so";
 
 type Args = {
 	binPath: string;
 	logFile?: string;
 };
+
+// Prepend the shim unless it is already one of the colon-separated paths.
+// The copy is passed only to the spawned stn-pty process.
+function ldPreloadForChild(existing: string | undefined): string {
+	if (!existing) return SHIM_LIBRARY;
+	const parts = existing.split(":").filter((part) => part.length > 0);
+	if (parts.includes(SHIM_LIBRARY)) return parts.join(":");
+	return [SHIM_LIBRARY, ...parts].join(":");
+}
+
 export default async function ({
-	args: { binPath, logFile, "--": args },
+	args: { binPath, logFile, "--": forwarded },
 }: HandlerInput<Args>) {
-	if (logFile) {
-		await match(args.findIndex((arg) => arg.toLowerCase() === "-logfile"))
-			.with(-1, () => {
-				args.push("-logfile", logFile);
-				return appendFile(logFile, ""); // make sure log file exists so we can tail it later
-			})
-			.otherwise(() => {
-				throw new Error(
-					"Do not specify -logfile manually in the rest arguments, use the --log-file flag or GAME_LOG_FILE env var instead.",
-				);
-			});
+	const gameArgs = [...(forwarded ?? [])];
+	if (gameArgs.some((arg) => arg.toLowerCase() === "-logfile")) {
+		throw new Error(
+			"Do not specify -logfile manually in the rest arguments, use the --log-file flag or GAME_LOG_FILE env var instead.",
+		);
+	}
+	if (!gameArgs.includes("-noclear")) {
+		gameArgs.push("-noclear");
 	}
 
-	const proc = spawn(`${binPath}/rocketstation_DedicatedServer.x86_64`, args);
+	if (logFile) {
+		await appendFile(logFile, ""); // make sure the log file exists; output is appended later
+	}
 
-	// pipe the server process output to the console
+	const ptyBin = process.env.STN_PTY_BIN ?? DEFAULT_PTY_BIN;
+	const gameBinary = `${binPath}/rocketstation_DedicatedServer.x86_64`;
+	const proc = spawn(ptyBin, [gameBinary, ...gameArgs], {
+		stdio: ["inherit", "pipe", "pipe"],
+		env: {
+			...process.env,
+			LD_PRELOAD: ldPreloadForChild(process.env.LD_PRELOAD),
+		},
+	});
+
+	// Docker stop sends SIGTERM. Unity handles SIGINT; stn-pty forwards it to the game.
+	process.on("SIGTERM", () => proc.kill("SIGINT"));
+
+	if (!proc.stdout || !proc.stderr) {
+		proc.kill("SIGKILL");
+		throw new Error("stn-pty stdout and stderr must be pipes");
+	}
+
+	// Identical bytes: helper stdout is copied unchanged to process.stdout and,
+	// when --log-file is set, appended to that file. No CR or escape stripping.
+	if (logFile) {
+		const teePath = logFile;
+		proc.stdout.on("data", (chunk: Buffer | string) => {
+			try {
+				fs.appendFileSync(teePath, chunk);
+			} catch (e) {
+				console.error(`Failed to write the log file: ${e}`);
+			}
+		});
+	}
 	proc.stdout.pipe(process.stdout);
 	proc.stderr.pipe(process.stderr);
 
-	// let quitting = false;
-	// Intercept SIGINT/SIGTERM and send `autosavecancel` command to the server process
-	// (autosavecancel = autosave then exit)
-	// function makdSignalHandler(name: string) {
-	// 	return () => {
-	// 		console.log(`Intercepted ${name}`);
-	// 		if (quitting) return;
-	// 		console.log(`Sending autosavecancel command...`);
-	// 		quitting = true;
-	// 		proc.stdin.write("autosavecancel\n");
-	// 		proc.on("exit", (code) => {
-	// 			console.log("Server process exited with code (autocancel): ", code);
-	// 			process.exit(code);
-	// 		});
-	// 	};
-	// }
-
-	// console.log(`Registering signal handlers...`);
-	// process.on("SIGINT", makdSignalHandler("SIGINT"));
-	process.on("SIGTERM", () => proc.kill("SIGINT")); // forwards SIGTERM to the server process as SIGINT as Unity only hanldes SIGINT
-
-	// tail the log file if specified
-	const log = match(logFile)
-		.with(undefined, () => undefined)
-		.otherwise((v) => {
-			try {
-				const proc = spawn("tail", ["-f", v]);
-				proc.stdout.pipe(process.stdout);
-				proc.stderr.pipe(process.stderr);
-				return proc;
-			} catch (e) {
-				console.error(`Failed to tail the log file: ${e}`);
-				return undefined;
-			}
-		});
-
 	return new Promise<void>((resolve, reject) => {
-		proc.on("exit", (code) => {
+		// "close" fires after stdout/stderr have ended, so the last bytes are
+		// in the tee file before it is deleted. "exit" can run earlier.
+		proc.on("close", (code) => {
 			console.log("Server process exited with code: ", code);
-
-			try {
-				if (log) log.kill();
-			} catch (e) {
-				console.error(`Failed to kill the log tail process: ${e}`);
-			}
 
 			try {
 				if (logFile) fs.unlinkSync(logFile); // delete the log file after the server process exits

@@ -11,12 +11,13 @@ export default baseCommand
 	.meta({
 		description:
 			'Run the game. Any arguments after "--" will be forwarded to the server executable. ' +
-			"This will also intercept SIGINT and perform autosave before quitting.",
+			"Commands written to stdin are delivered to the server console. " +
+			"When --log-file is set, that same console output is also appended to the file.",
 	})
 	.option(
 		"log-file",
 		o.string({
-			description: "Path to the game log file.",
+			description: "Append a copy of the server console output to this file.",
 			fallback: () => process.env.GAME_LOG_FILE,
 		})
 	)
