@@ -1,11 +1,11 @@
 #!/bin/bash
 
-set -ex
+set -e
 
 # tail -f log.txt &
 
 # start the server
-node ~/tool.js run -- "$@" &
+node ~/tool.js run -- "$@" 0<&0 &
 NODE_PID=$!
 
 # Trap SIGTERM signal

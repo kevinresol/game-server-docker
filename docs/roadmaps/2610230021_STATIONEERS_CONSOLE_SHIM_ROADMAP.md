@@ -323,7 +323,7 @@ Verdict: approve. `stn-pty` uses `forkpty` with kernel defaults, copies Enter as
 
 ### S4 — Dockerfile and entrypoint wiring
 
-**Status:** in_progress
+**Status:** approved
 
 **Depends on:** S2 and S3 approved
 
@@ -331,18 +331,18 @@ Verdict: approve. `stn-pty` uses `forkpty` with kernel defaults, copies Enter as
 
 #### Implementor checklist
 
-- [ ] Add a compile stage (throwaway Debian/gcc image matching the base image's glibc generation; record `ldd --version` of both in the Agent log and confirm the built `.so`/binary run in the final image) that builds `libkernel32-shim.so` and `stn-pty` from `games/stationeers/shim/`; copy only the outputs to `/home/steam/shim/` in the final image with `steam:steam` ownership.
-- [ ] Implement the S1-selected kernel32 wiring: the `<dllmap>` entry written into the Mono config at build time (fail the build loudly if the config edit target is missing), or the `LD_PRELOAD` fallback. In either case, `LD_PRELOAD` for the throttle is set only for the game child by the wrapper (S5 reads the library path from `/home/steam/shim/libkernel32-shim.so`); never add an image-wide `ENV LD_PRELOAD`.
-- [ ] Ensure the `xterm` terminfo entry exists in the final image (install the package only if it is absent).
-- [ ] Remove the default `ENV GAME_LOG_FILE` so no log file is created unless the user opts in. Keep other internal vars unchanged.
-- [ ] In `entrypoint.sh`, remove `set -x` and make the backgrounded node command inherit stdin explicitly (`0<&0`), so `docker run -i` input is not replaced by `/dev/null`; keep the SIGTERM trap and `wait` structure unchanged.
-- [ ] Build the image locally using the build commands in Protocol with the current `dist/tool.js`, and confirm the shim files and wiring are present and that fd 0 of the node process is a pipe/tty (not `/dev/null`) under `docker run -i` using a short-lived throwaway container. Do not run a long-lived server in this task.
+- [x] Add a compile stage (throwaway Debian/gcc image matching the base image's glibc generation; record `ldd --version` of both in the Agent log and confirm the built `.so`/binary run in the final image) that builds `libkernel32-shim.so` and `stn-pty` from `games/stationeers/shim/`; copy only the outputs to `/home/steam/shim/` in the final image with `steam:steam` ownership.
+- [x] Implement the S1-selected kernel32 wiring: the `<dllmap>` entry written into the Mono config at build time (fail the build loudly if the config edit target is missing), or the `LD_PRELOAD` fallback. In either case, `LD_PRELOAD` for the throttle is set only for the game child by the wrapper (S5 reads the library path from `/home/steam/shim/libkernel32-shim.so`); never add an image-wide `ENV LD_PRELOAD`.
+- [x] Ensure the `xterm` terminfo entry exists in the final image (install the package only if it is absent).
+- [x] Remove the default `ENV GAME_LOG_FILE` so no log file is created unless the user opts in. Keep other internal vars unchanged.
+- [x] In `entrypoint.sh`, remove `set -x` and make the backgrounded node command inherit stdin explicitly (`0<&0`), so `docker run -i` input is not replaced by `/dev/null`; keep the SIGTERM trap and `wait` structure unchanged.
+- [x] Build the image locally using the build commands in Protocol with the current `dist/tool.js`, and confirm the shim files and wiring are present and that fd 0 of the node process is a pipe/tty (not `/dev/null`) under `docker run -i` using a short-lived throwaway container. Do not run a long-lived server in this task.
 
 #### Reviewer checklist
 
-- [ ] The final image contains no compiler or build artifacts beyond the two shim outputs.
-- [ ] Wiring matches S1's evidence; the build breaks if the config file moves; no image-wide `LD_PRELOAD`.
-- [ ] `entrypoint.sh` diff is limited to removing `set -x` and the stdin inheritance.
+- [x] The final image contains no compiler or build artifacts beyond the two shim outputs.
+- [x] Wiring matches S1's evidence; the build breaks if the config file moves; no image-wide `LD_PRELOAD`.
+- [x] `entrypoint.sh` diff is limited to removing `set -x` and the stdin inheritance.
 
 #### Agent log
 
@@ -351,6 +351,10 @@ Pack four-pack. Coder starting 2026-10-23 in worktree `roadmap/stationeers-conso
 **Implementor — S4 — 2026-10-23.** `games/stationeers/Dockerfile` and `entrypoint.sh` only, uncommitted, worktree `roadmap/stationeers-console-shim/S4`. Local image `stn-s4-wiring:local`; `kevinresol/stationeers-dedicated-server` was not retagged. Compile stage is the base image plus `gcc` and `libc6-dev` from the Debian snapshot in `debian.sources` (`20260223T000000Z`). `ldd --version` is `ldd (Debian GLIBC 2.41-12+deb13u1) 2.41` in that stage and in the final image. Both outputs are `/home/steam/shim/`, owner `steam:steam`. Highest imported glibc symbol is `GLIBC_2.34`. In the final image `ldd` resolves both, `SetConsoleOutputCP(65001)` and `SetConsoleCP(65001)` return 1, and `stn-pty /bin/true` exits 0. `gcc` is absent. No image `ENV LD_PRELOAD`. Runtime stage does not set `GAME_LOG_FILE` (install stage keeps the previous `ENV` so the Steam layer can be reused). xterm terminfo was already `/usr/share/terminfo/x/xterm`; `ncurses-base` was not installed. Two `dllentry` lines sit after the four `__Internal` entries inside `<dllmap dll="i:kernel32.dll">`. The edit exits 1 if the config file, that block, or any of the four entries is missing (checked on a copy: renamed block, missing file, dropped `ZeroMemory`). `entrypoint.sh` is `set -e` and `node ~/tool.js run -- "$@" 0<&0 &`; the SIGTERM trap and `wait` are unchanged. Under `docker run -i` without `-t`, node fd 0 was `pipe:[18278]`, the same pipe as `stn-pty`, not `/dev/null`. Removed throwaway `stn-s4-fdcheck`. `stationeers` stayed exited at `2026-10-22T11:39:53.851256288Z`.
 
 **Cleaner — S4 — 2026-10-23.** No changes. The glibc pin, dllmap checks, ownership, and stdin inheritance stay as written. The image was not rebuilt.
+
+#### Reviewer — S4 — 2026-10-23
+
+Verdict: approve. `stn-s4-wiring:local` keeps the four `__Internal` entries and adds the two `dllentry` lines for `/home/steam/shim/libkernel32-shim.so` inside the existing kernel32 `dllmap`. The build exits 1 if that config, that block, or any of those four entries is missing. The runtime image sets neither `LD_PRELOAD` nor `GAME_LOG_FILE`. `/home/steam/shim/` holds only the two shim binaries, both `steam:steam`, and the compiler tools are absent. The `entrypoint.sh` diff is `set -e` and `0<&0` on the backgrounded node command. Residual: this review did not re-measure the discarded compile stage's `ldd --version`, and did not repeat the stdin-pipe run or the negative config edits. Lands with the image wiring in this commit.
 
 ---
 
