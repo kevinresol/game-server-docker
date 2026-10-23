@@ -33,10 +33,13 @@ type Started = {
 	settled: () => boolean;
 	stdout: () => Buffer;
 	stderr: () => Buffer;
+	refusedStdout: () => number;
+	releaseRefusedStdout: () => void;
 	logSnapshot: () => Buffer | null;
 	logs: () => unknown[][];
 	readReport: () => Report;
 	releaseWait: () => void;
+	releaseExit: () => void;
 	childEvents: string[];
 	signalPath: string;
 	gameSignalPath: string;
@@ -107,35 +110,89 @@ function spyChildLifecycle(): { events: string[]; restore: () => void } {
 	};
 }
 
-// Record only the chunks piped to the process stdio streams. Those are the
-// helper bytes, without the test runner's own writes mixed in.
-function tapStdioPipes(): {
+// Stdout is whatever process.stdout.write accepts. A chunk the sink refuses is
+// absent from stdout() and must not be appended to --log-file. Stderr is still
+// recorded from the pipe. String writes (the test runner) are ignored.
+function tapStdioPipes(acceptStdout?: (chunk: Buffer, index: number) => boolean): {
 	stdout: () => Buffer;
 	stderr: () => Buffer;
+	refusedStdout: () => number;
+	releaseRefusedStdout: () => void;
 	restore: () => void;
 } {
 	const stdoutChunks: Buffer[] = [];
 	const stderrChunks: Buffer[] = [];
-	const original = Readable.prototype.pipe;
+	const refused: Array<{ callback?: (error?: Error | null) => void }> = [];
+	// Buffers emitted by a child stdout. The test runner writes other buffers
+	// to process.stdout; those are not the helper sink.
+	const helperChunks = new Set<Buffer>();
+	const originalPipe = Readable.prototype.pipe;
+	// Node's public types omit the internal ChildProcess.spawn used by spawn().
+	const childProto = ChildProcess.prototype as unknown as {
+		spawn: (this: ChildProcess, ...args: unknown[]) => unknown;
+	};
+	const originalChildSpawn = childProto.spawn;
+	const originalStdoutWrite = process.stdout.write as unknown as (
+		chunk: string | Uint8Array,
+		encoding?: BufferEncoding | ((error?: Error | null) => void),
+		cb?: (error?: Error | null) => void,
+	) => boolean;
+	childProto.spawn = function (this: ChildProcess, ...args: unknown[]): unknown {
+		const result = originalChildSpawn.apply(this, args);
+		this.stdout?.on("data", (chunk: Buffer | string) => {
+			if (Buffer.isBuffer(chunk)) helperChunks.add(chunk);
+		});
+		return result;
+	};
 	Readable.prototype.pipe = function (
 		this: Readable,
 		dest: NodeJS.WritableStream,
 		options?: { end?: boolean },
 	) {
-		const target =
-			dest === process.stdout ? stdoutChunks : dest === process.stderr ? stderrChunks : undefined;
-		if (target) {
+		if (dest === process.stderr) {
 			this.on("data", (chunk: Buffer | string) => {
-				target.push(Buffer.isBuffer(chunk) ? Buffer.from(chunk) : Buffer.from(chunk));
+				stderrChunks.push(Buffer.isBuffer(chunk) ? Buffer.from(chunk) : Buffer.from(chunk));
 			});
 		}
-		return original.call(this, dest, options);
+		return originalPipe.call(this, dest, options);
 	} as typeof Readable.prototype.pipe;
+	process.stdout.write = function (
+		this: NodeJS.WriteStream,
+		chunk: string | Uint8Array,
+		encoding?: BufferEncoding | ((error?: Error | null) => void),
+		cb?: (error?: Error | null) => void,
+	): boolean {
+		const callback = typeof encoding === "function" ? encoding : cb;
+		if (!Buffer.isBuffer(chunk) || !helperChunks.has(chunk)) {
+			if (typeof encoding === "function") {
+				return originalStdoutWrite.call(process.stdout, chunk, encoding);
+			}
+			return originalStdoutWrite.call(process.stdout, chunk, encoding as BufferEncoding, cb);
+		}
+		helperChunks.delete(chunk);
+		const buf = Buffer.from(chunk);
+		const index = stdoutChunks.length + refused.length;
+		if (acceptStdout && !acceptStdout(buf, index)) {
+			refused.push({ callback });
+			return false;
+		}
+		stdoutChunks.push(buf);
+		if (callback) return originalStdoutWrite.call(process.stdout, buf, callback);
+		return originalStdoutWrite.call(process.stdout, buf);
+	} as typeof process.stdout.write;
 	return {
 		stdout: () => Buffer.concat(stdoutChunks),
 		stderr: () => Buffer.concat(stderrChunks),
+		refusedStdout: () => refused.length,
+		releaseRefusedStdout() {
+			const pending = refused.splice(0);
+			for (const item of pending) item.callback?.();
+			process.stdout.emit("drain");
+		},
 		restore() {
-			Readable.prototype.pipe = original;
+			Readable.prototype.pipe = originalPipe;
+			childProto.spawn = originalChildSpawn;
+			process.stdout.write = originalStdoutWrite;
 		},
 	};
 }
@@ -143,10 +200,12 @@ function tapStdioPipes(): {
 function startRun(options: {
 	args?: string[];
 	useLogFile?: boolean;
-	mode: "exit" | "output" | "output-wait" | "wait" | "signal";
+	mode: "exit" | "output" | "output-wait" | "output-split" | "wait" | "signal";
 	exitCode?: number;
 	payload?: Buffer;
+	cut?: number;
 	ldPreload?: string;
+	acceptStdout?: (chunk: Buffer, index: number) => boolean;
 }): Started {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stn-s5-"));
 	const binPath = path.join(dir, "game");
@@ -161,6 +220,7 @@ function startRun(options: {
 	const gameSignalPath = path.join(dir, "game-signal");
 	const helperPidPath = path.join(dir, "helper.pid");
 	const gamePidPath = path.join(dir, "game.pid");
+	const exitPath = path.join(dir, "exit");
 	const logFile = options.useLogFile ? path.join(dir, "stationeers.log") : undefined;
 	const stdin = parentStdinIdentity();
 	if (options.payload) fs.writeFileSync(payloadPath, options.payload);
@@ -171,17 +231,29 @@ function startRun(options: {
 const fs = require("node:fs");
 const mode = process.env.STN_FAKE_MODE;
 const exitCode = Number(process.env.STN_FAKE_EXIT || "0");
-if (mode === "output" || mode === "output-wait") {
-  fs.writeSync(1, fs.readFileSync(process.env.STN_FAKE_PAYLOAD));
+if (mode === "output" || mode === "output-wait" || mode === "output-split") {
+  const payload = fs.readFileSync(process.env.STN_FAKE_PAYLOAD);
+  const cut = mode === "output-split" ? Number(process.env.STN_FAKE_CUT || "0") : payload.length;
+  fs.writeSync(1, payload.subarray(0, cut));
   fs.writeSync(2, Buffer.from("pty-stderr"));
   if (mode === "output") process.exit(exitCode);
   fs.writeFileSync(process.env.STN_FAKE_READY, "ready");
   const release = process.env.STN_FAKE_RELEASE;
   const timer = setInterval(() => {
-    if (fs.existsSync(release)) {
-      clearInterval(timer);
-      process.exit(exitCode);
+    if (!fs.existsSync(release)) return;
+    clearInterval(timer);
+    if (mode === "output-split") {
+      fs.writeSync(1, payload.subarray(cut));
+      fs.writeFileSync(process.env.STN_FAKE_READY, "second");
+      const exitFile = process.env.STN_FAKE_EXIT_FILE;
+      const exitTimer = setInterval(() => {
+        if (!fs.existsSync(exitFile)) return;
+        clearInterval(exitTimer);
+        process.exit(exitCode);
+      }, 15);
+      return;
     }
+    process.exit(exitCode);
   }, 15);
 } else if (mode === "wait") {
   fs.writeFileSync(process.env.STN_FAKE_READY, "ready");
@@ -271,11 +343,13 @@ child.on("close", (code) => process.exit(code === null ? 1 : code));
 	assignEnv("STN_FAKE_GAME_SIGNAL", gameSignalPath);
 	assignEnv("STN_FAKE_HELPER_PID", helperPidPath);
 	assignEnv("STN_FAKE_GAME_PID", gamePidPath);
+	assignEnv("STN_FAKE_CUT", String(options.cut ?? 0));
+	assignEnv("STN_FAKE_EXIT_FILE", exitPath);
 	assignEnv("STN_EXPECT_STDIN_DEV", stdin.dev);
 	assignEnv("STN_EXPECT_STDIN_INO", stdin.ino);
 	assignEnv("LD_PRELOAD", options.ldPreload);
 
-	const piped = tapStdioPipes();
+	const piped = tapStdioPipes(options.acceptStdout);
 	const logLines: unknown[][] = [];
 	const originalConsoleLog = console.log;
 	console.log = (...args: unknown[]) => {
@@ -331,6 +405,7 @@ child.on("close", (code) => process.exit(code === null ? 1 : code));
 		cleaned = true;
 		lifecycle.restore();
 		fs.unlinkSync = originalUnlink;
+		piped.releaseRefusedStdout();
 		piped.restore();
 		console.log = originalConsoleLog;
 		restoreSignals();
@@ -352,11 +427,16 @@ child.on("close", (code) => process.exit(code === null ? 1 : code));
 		settled: () => settled,
 		stdout: () => piped.stdout(),
 		stderr: () => piped.stderr(),
+		refusedStdout: () => piped.refusedStdout(),
+		releaseRefusedStdout: () => piped.releaseRefusedStdout(),
 		logSnapshot: () => snapshot,
 		logs: () => logLines,
 		readReport: () => JSON.parse(fs.readFileSync(reportPath, "utf8")) as Report,
 		releaseWait: () => {
 			fs.writeFileSync(releasePath, "go");
+		},
+		releaseExit: () => {
+			fs.writeFileSync(exitPath, "go");
 		},
 		childEvents: lifecycle.events,
 		signalPath,
@@ -514,6 +594,51 @@ describe("stationeers run handler", { concurrency: false }, () => {
 			assert.deepEqual(run.logSnapshot(), PAYLOAD);
 			assert.equal(fs.existsSync(logFile), false);
 			assert.deepEqual(run.stdout(), PAYLOAD);
+			assert.deepEqual(run.logs(), [["Server process exited with code: ", 0]]);
+		} finally {
+			await run.cleanup();
+		}
+	});
+
+	test("does not append a stdout chunk the sink has not accepted", async () => {
+		const accepted = Buffer.from("ACCEPTED-CHUNK\r\n", "utf8");
+		const refused = Buffer.from("\x1b[48;1H> REFUSED-CHUNK", "utf8");
+		const payload = Buffer.concat([accepted, refused]);
+		const run = startRun({
+			useLogFile: true,
+			mode: "output-split",
+			payload,
+			cut: accepted.length,
+			acceptStdout: (_chunk, index) => index === 0,
+		});
+		try {
+			const logFile = run.logFile;
+			assert.ok(logFile);
+			await waitFor(() => {
+				try {
+					return fs.readFileSync(logFile).equals(accepted) && run.stdout().equals(accepted);
+				} catch {
+					return false;
+				}
+			}, "the accepted chunk to reach stdout and the log file");
+			run.releaseWait();
+			await waitFor(
+				() => run.refusedStdout() >= 1 && fs.readFileSync(run.readyPath, "utf8") === "second",
+				"the stdout sink to refuse the second chunk",
+			);
+			const logged = fs.readFileSync(logFile);
+			assert.equal(
+				logged.includes(refused),
+				false,
+				"log file contains a chunk the stdout sink never accepted",
+			);
+			assert.deepEqual(logged, accepted);
+			assert.deepEqual(run.stdout(), accepted);
+			assert.equal(logged.includes(DIAGNOSTIC), false);
+			assert.deepEqual(run.stderr(), DIAGNOSTIC);
+			run.releaseRefusedStdout();
+			run.releaseExit();
+			await run.result;
 			assert.deepEqual(run.logs(), [["Server process exited with code: ", 0]]);
 		} finally {
 			await run.cleanup();

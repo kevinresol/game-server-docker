@@ -2,6 +2,7 @@ import { HandlerInput } from "@why-ts/cli";
 import { spawn } from "node:child_process";
 import { appendFile } from "node:fs/promises";
 import fs from "node:fs";
+import { Readable } from "node:stream";
 import { startPlayerLog } from "./playerlog";
 
 const DEFAULT_PTY_BIN = "/home/steam/shim/stn-pty";
@@ -56,19 +57,10 @@ export default async function ({
 		throw new Error("stn-pty stdout and stderr must be pipes");
 	}
 
-	// Identical bytes: helper stdout is copied unchanged to process.stdout and,
-	// when --log-file is set, appended to that file. No CR or escape stripping.
-	if (logFile) {
-		const teePath = logFile;
-		proc.stdout.on("data", (chunk: Buffer | string) => {
-			try {
-				fs.appendFileSync(teePath, chunk);
-			} catch (e) {
-				console.error(`Failed to write the log file: ${e}`);
-			}
-		});
-	}
-	proc.stdout.pipe(process.stdout);
+	// One write path. A byte is appended to --log-file only from the stdout
+	// write callback, so a chunk process.stdout has not accepted cannot land
+	// in the file first. Stderr is not part of that path. No CR or escape stripping.
+	const stdoutFlush = forwardStdout(proc.stdout, logFile);
 	proc.stderr.pipe(process.stderr);
 
 	// Unity's Player.log is separate from the --log-file tee. startPlayerLog
@@ -80,19 +72,76 @@ export default async function ({
 		// in the tee file before it is deleted. "exit" can run earlier.
 		proc.on("close", (code) => {
 			playerLog.stop();
-			console.log("Server process exited with code: ", code);
+			void stdoutFlush.then(() => {
+				console.log("Server process exited with code: ", code);
 
-			try {
-				if (logFile) fs.unlinkSync(logFile); // delete the log file after the server process exits
-			} catch (e) {
-				console.error(`Failed to delete the log file: ${e}`);
-			}
+				try {
+					if (logFile) fs.unlinkSync(logFile); // delete the log file after the server process exits
+				} catch (e) {
+					console.error(`Failed to delete the log file: ${e}`);
+				}
 
-			if (code === 0) {
-				resolve();
-			} else {
-				reject(new Error(`Game tool exited with code ${code}`));
-			}
+				if (code === 0) {
+					resolve();
+				} else {
+					reject(new Error(`Game tool exited with code ${code}`));
+				}
+			});
 		});
+	});
+}
+
+// Helper stdout is written only through process.stdout.write. The log file is
+// updated inside that write's callback, after the sink has accepted the chunk.
+// A false return pauses the helper so a stalled stdout cannot leave the file ahead.
+function forwardStdout(source: Readable, logFile: string | undefined): Promise<void> {
+	let pending = 0;
+	let ended = false;
+	let notify: (() => void) | undefined;
+
+	const settled = () => {
+		if (!ended || pending !== 0) return;
+		notify?.();
+		notify = undefined;
+	};
+
+	source.on("end", () => {
+		ended = true;
+		settled();
+	});
+	source.on("data", (chunk: Buffer | string) => {
+		const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+		pending += 1;
+		let finished = false;
+		const onWritten = (error?: Error | null) => {
+			if (finished) return;
+			finished = true;
+			if (!error && logFile) {
+				try {
+					fs.appendFileSync(logFile, buf);
+				} catch (e) {
+					console.error(`Failed to write the log file: ${e}`);
+				}
+			}
+			pending -= 1;
+			settled();
+		};
+		try {
+			const queued = process.stdout.write(buf, onWritten);
+			if (!queued) {
+				source.pause();
+				process.stdout.once("drain", () => {
+					source.resume();
+				});
+			}
+		} catch (e) {
+			console.error(`Failed to write stdout: ${e}`);
+			onWritten(e instanceof Error ? e : new Error(String(e)));
+		}
+	});
+
+	return new Promise((resolve) => {
+		notify = resolve;
+		settled();
 	});
 }
