@@ -10,7 +10,7 @@ None.
 
 ## Blocked
 
-- `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — S7 blocked on B1 (2026-10-23). One write of `save stnshim1` plus a newline does not reach the game. The same line sent one byte at a time creates the save. Owner S3. S8 waits on S7.
+- `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — S7 blocked on B1/B2 (2026-10-23). One write of a command line reaches the game, including the newline, but Mono's `ReadKey` consumes only the first byte and then sees an empty fd 0. Paced bytes run the command. S8 waits on S7.
 
 ## Claimed-by
 
@@ -18,7 +18,7 @@ None. The console-shim claim was cleared when S7 was parked.
 
 ## Human actions needed
 
-- Opened 2026-10-23. Roadmap `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md`, residual S7 B1 / S3 pacing. Action: choose whether to reopen S3 so a whole stdin line reaches the game, or change B1 and keep the no-pacing contract. Unblocks S7 and then S8. Requested by the execute-all-roadmaps orchestrator.
+- Opened 2026-10-23. Roadmap `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md`, residual S7 B1/B2. The whole line already reaches the game. Mono returns only the first byte from that read. Action: choose whether to deliver stdin one byte at a time so each `ReadKey` sees a new byte, or change B1/B2 and keep the no-pacing contract. Unblocks S7 and then S8. Requested by the execute-all-roadmaps orchestrator.
 
 ## Dependency sketch
 

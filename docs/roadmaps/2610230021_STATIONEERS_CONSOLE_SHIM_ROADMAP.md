@@ -476,7 +476,9 @@ Implementor — S7. Image `stn-s7-live:local` (`linux/amd64`, built from `games/
 
 Cleanup removed every `stn-s7-*` container and `stn-s7-vol-*` volume this task created, and removed the `stn-s7-live:local` tag. Retained `stn-s4-wiring:local` (`7f28c086e535`). No `docker system prune`. `stationeers` was not started, stopped, or modified.
 
-**Orchestrator — S7 — 2026-10-23.** Hard block. Acceptance B1 requires one write of `save stnshim1` plus a newline. The approved S3 contract does not require pacing, and that write does not reach the game. The same line sent one byte at a time does. Unblocks if S3 is reopened so a whole stdin line is delivered in a way Mono accepts, or if B1 is changed. S8 stays pending.
+**Orchestrator — S7 — 2026-10-23.** Hard block. Acceptance B1 requires one write of `save stnshim1` plus a newline. The approved S3 contract does not require pacing, and that write does not run the command. The same line sent one byte at a time does. S8 stays pending.
+
+**Debug — 2026-10-23.** A single `help\n`, 10s after Ready on `docker run -it`, is delivered intact. `stn-pty` reads 5 bytes from its stdin and writes `help\n` (`0x0a` included) to the PTY master in one `write`. The game's `read(0, …, 1024)` returns those same 5 bytes. Mono's `ReadKey` returns only `h`. `KeyAvailable` then polls an empty fd 0, so `e`, `l`, `p`, and Enter stay in Mono's buffer and `OnEnter` never runs. The `> help` on screen is the outer terminal echo. The game redraws `> h`. The select hook saw the line (`pselect` returned readable) and is not the cause. Evidence: `stn-diag/20261023T030556Z/`. A paced control on the same server printed the help list. Unblocks if input is delivered one byte at a time so each `ReadKey` sees a fresh fd-0 byte, or if B1/B2 are changed to require that pacing. Patching Mono is out of scope.
 
 ---
 
