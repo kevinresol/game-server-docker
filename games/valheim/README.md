@@ -2,28 +2,27 @@
 
 ## Run Server
 
-```
+```sh
 docker run -d \
   -v $(pwd)/valheim:/data \
   -p 2456:2456/udp -p 2457:2457/udp \
-  kevinresol/valheim-dedicated-server[:<tagname>]
+  kevinresol/valheim-dedicated-server:latest \
+  [-name ValheimExample] \
   [-port 2456] \
-  [-name <value>] \
-  [-world <value>] \
-  [-password <value>] \
+  [-world Dedicated] \
+  [-password change-this-password] \
+  [-public 1] \
   [...]
 ```
 
-### Script Arguments
+## Script Arguments
 
-Additional args after the image name (such as `-port` in the example) will be forwarded to the server executable.
-See more in the following pages:
+Arguments after the image name are forwarded to the Valheim server executable. The entrypoint always passes `-savedir /data` before those arguments. The example shows common optional server arguments; omit any that you do not need. The server uses the port given to `-port` and the next port. The defaults are UDP `2456` and `2457`.
 
-- https://valheim.fandom.com/wiki/Dedicated_servers
-- https://www.valheimgame.com/ja/support/a-guide-to-dedicated-servers
+See the [Valheim dedicated server guide](https://www.valheimgame.com/support/a-guide-to-dedicated-servers/) and the [Valheim dedicated servers wiki](https://valheim.fandom.com/wiki/Dedicated_servers) for supported game arguments.
 
-If using docker-compose, define any additional arguments in the command section of your service definition.
+With Docker Compose, put the same optional server arguments in the service's `command` list.
 
-### Volumes
+## Volumes
 
-Mounting a volume with your server save files is essential. This is done using the `-v` flag in `docker run` or the `volumes` field in docker-compose. The volume is mapped to the container's `/data` directory and also passed to the server executable's `-savedir` flag.
+Mount a persistent volume at `/data` so world saves survive container replacement. The entrypoint passes `/data` to the server as `-savedir`. World files and the permission lists `adminlist.txt`, `bannedlist.txt`, and `permittedlist.txt` are stored there. In Docker Compose, use the service's `volumes` field to map a host directory such as `./valheim` to `/data`.

@@ -1,6 +1,6 @@
 # Game Server README Consistency — Task Map
 
-**Status:** Ready — Executable.
+**Status:** Complete.
 
 ## Goal (locked)
 
@@ -219,7 +219,7 @@ Verdict: approve. No critical or important findings. Ports, argument forwarding,
 
 ### T3 — Align Stationeers / Valheim
 
-**Status:** in_progress
+**Status:** approved
 
 **Depends on:** T1
 
@@ -227,15 +227,15 @@ Verdict: approve. No critical or important findings. Ports, argument forwarding,
 
 #### Implementor checklist
 
-- [ ] Apply T1's recorded structure and style baseline to both READMEs.
-- [ ] Use T1's applicability matrix, verifying relevant implementation details for both images, to add equivalent guidance wherever supported without copying unrelated settings or behavior.
-- [ ] Replace abstract example placeholders with concrete representative values and correct inconsistent command formatting and shell line continuations.
+- [x] Apply T1's recorded structure and style baseline to both READMEs.
+- [x] Use T1's applicability matrix, verifying relevant implementation details for both images, to add equivalent guidance wherever supported without copying unrelated settings or behavior.
+- [x] Replace abstract example placeholders with concrete representative values and correct inconsistent command formatting and shell line continuations.
 
 #### Reviewer checklist
 
-- [ ] Confirm both READMEs match the approved baseline and include equivalent content for supported topics.
-- [ ] Verify ports, argument forwarding, config/environment-variable behavior, volume/save paths, and startup notes against the corresponding image.
-- [ ] Confirm no unsupported behavior was introduced and useful game-specific information remains.
+- [x] Confirm both READMEs match the approved baseline and include equivalent content for supported topics.
+- [x] Verify ports, argument forwarding, config/environment-variable behavior, volume/save paths, and startup notes against the corresponding image.
+- [x] Confirm no unsupported behavior was introduced and useful game-specific information remains.
 
 #### Agent log
 
@@ -247,6 +247,14 @@ Verdict: revise. Valheim matches the image and the T1 baseline. Two Stationeers 
 - Issue: the guide says include `StartLocalHost true` so clients can connect. Risk: this dedicated-server build hosts because `IsBatchMode` is always true; `StartLocalHost` defaults to false and is not what opens the server. Expected change: remove that requirement. The example may keep `StartLocalHost true` as an ordinary settings pair.
 
 Nit, not required for this revise: `GAME_LOG_FILE` is deleted when the server exits. Retry 1 of 2.
+
+**Implementor — T3 revise 1 — 2026-10-23.** `-file start` is positional: save name required, world id required only when that station does not exist yet, difficulty optional and defaults to `Normal`. Example stays `MarsBase Mars2 Normal`. `StartLocalHost true` stays as an ordinary settings pair. The guide no longer says clients need it to connect.
+
+#### Reviewer — T3 attempt 2 — 2026-10-23
+
+Verdict: approve. Both fixes match the dedicated-server build. The guide still documents the current helper appending `-logfile` from `GAME_LOG_FILE` and does not describe the console shim. Valheim matches the image. Residual: the helper deletes that log file on exit and the guide does not say so. Unquoted `$(pwd)` matches the approved T1 examples.
+
+End-of-roadmap QA skipped. Pack is two-pack, Protocol does not set `end-qa: true`, and this run did not request end QA. All chunks T1–T4 are approved.
 
 ---
 

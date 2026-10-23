@@ -2,7 +2,6 @@
 
 ## Ready
 
-- `2610112002_GAME_README_CONSISTENCY_ROADMAP.md` — Executable; T1, T2, and T4 approved; T3 in revise
 - `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — Executable; S1 and S2 approved; F1 confirmed at 15 percentage points; S3/S5 in progress
 
 ## Not Ready
@@ -15,8 +14,7 @@ None.
 
 ## Claimed-by
 
-- `2610112002_GAME_README_CONSISTENCY_ROADMAP.md` — execute-all-roadmaps orchestrator (2026-10-23)
-- `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — execute-all-roadmaps orchestrator (2026-10-23); `games/stationeers/README.md` overlap with README roadmap T3: S8 must run after T3 is approved
+- `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — execute-all-roadmaps orchestrator (2026-10-23). README roadmap T3 is complete, so S8 is no longer waiting on that Stationeers README edit.
 
 ## Human actions needed
 
@@ -24,7 +22,7 @@ None. F1 CPU threshold for `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` was 
 
 ## Dependency sketch
 
-- Game README consistency: T1 → T2/T3/T4 in parallel.
+- Game README consistency: complete (T1, then T2/T3/T4). Stationeers README from T3 documents the current helper; console-shim S8 may replace that section after S7.
 - Stationeers RCON save (parked): T1 → user contract confirmation → T2 → T3/T4 in parallel.
 - Stationeers console shim: S1 → S2/S3/S5 in parallel; S2+S3 → S4; S5 → S6; S4+S5+S6 → S7 → S8. Shares `games/stationeers/tool/command/run/handler.ts` with the parked RCON roadmap (T3): if revived, run it only after this roadmap completes.
 
