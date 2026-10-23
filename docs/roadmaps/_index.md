@@ -2,7 +2,7 @@
 
 ## Ready
 
-None.
+- `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — Executable; S1 through S6 approved; S9 in progress (stdin byte cache). S7 waits on S9, then S8.
 
 ## Not Ready
 
@@ -10,21 +10,21 @@ None.
 
 ## Blocked
 
-- `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — S7 blocked on B1/B2 (2026-10-23). One write of a command line reaches the game, including the newline, but Mono's `ReadKey` consumes only the first byte and then sees an empty fd 0. Paced bytes run the command. S8 waits on S7.
+None.
 
 ## Claimed-by
 
-None. The console-shim claim was cleared when S7 was parked.
+- `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — execute-all-roadmaps orchestrator (2026-10-23). S9 is the stdin byte cache chosen by the user.
 
 ## Human actions needed
 
-- Opened 2026-10-23. Roadmap `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md`, residual S7 B1/B2. The whole line already reaches the game. Mono returns only the first byte from that read. Action: choose whether to deliver stdin one byte at a time so each `ReadKey` sees a new byte, or change B1/B2 and keep the no-pacing contract. Unblocks S7 and then S8. Requested by the execute-all-roadmaps orchestrator.
+None. On 2026-10-23 the user chose the stdin byte cache in `libkernel32-shim.so` for `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md`. F1 remains 15 percentage points above the old direct-spawn idle CPU.
 
 ## Dependency sketch
 
 - Game README consistency: complete (T1, then T2/T3/T4). Stationeers README from T3 documents the current helper; console-shim S8 may replace that section after S7.
 - Stationeers RCON save (parked): T1 → user contract confirmation → T2 → T3/T4 in parallel.
-- Stationeers console shim: S1 → S2/S3/S5 in parallel; S2+S3 → S4; S5 → S6; S4+S5+S6 → S7 → S8. Shares `games/stationeers/tool/command/run/handler.ts` with the parked RCON roadmap (T3): if revived, run it only after this roadmap completes.
+- Stationeers console shim: S1 → S2/S3/S5 in parallel; S2+S3 → S4; S5 → S6; S4+S5+S6 → S7 evidence; S9 (stdin byte cache) → S7 re-run → S8. Shares `games/stationeers/tool/command/run/handler.ts` with the parked RCON roadmap (T3): if revived, run it only after this roadmap completes.
 
 ## Completes
 

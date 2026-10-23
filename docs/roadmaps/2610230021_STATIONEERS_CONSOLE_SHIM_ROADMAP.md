@@ -1,6 +1,6 @@
 # Stationeers Console Shim — Task Map
 
-**Status:** Blocked — S7. A single stdin line does not reach the game.
+**Status:** Ready — Executable. S9 feeds stdin to Mono one byte at a time.
 
 ## Goal (locked)
 
@@ -20,6 +20,7 @@ Make the Stationeers dedicated server's built-in headless console work inside th
 
 - **Shim mechanism:** the `kernel32` stubs live in one native library, `libkernel32-shim.so`. Preferred wiring is a Mono `<dllmap dll="kernel32.dll" target="..."/>` entry; fallback is `LD_PRELOAD`. S1 selects one based on evidence; S4 implements it. Neither may be chosen without S1 evidence. Note that `LD_PRELOAD` can only help if Mono resolves `kernel32.dll` to a handle whose `dlsym` can see the preloaded symbols; S1's "why `EntryPointNotFoundException`" finding is the real gate.
 - **CPU throttle (native, no IL change):** the game's input loop spins on `Console.KeyAvailable`, which under `TermInfoDriver` is a zero-timeout `poll` on fd 0 per iteration (decompile `RocketSystemConsole.cs:96-123`, `TermInfoDriver.cs:285-297`; the exact syscall is to be confirmed in S1). The shim library also exports an interposing `poll()` that, only for calls with a single descriptor equal to fd 0 and timeout 0, substitutes a short timeout (about 10 ms) and otherwise forwards to libc unchanged. This makes the loop block in the kernel instead of spinning, with input latency of at most that timeout. Because this needs `LD_PRELOAD` regardless of how kernel32 is wired, **`LD_PRELOAD` is set by the Node wrapper on the game child only** (via the `stn-pty` environment), never as an image-wide `ENV`, so node, bash and the helper are unaffected. If S1 shows the throttle is not feasible (for example, the call does not go through an interposable `poll`), stop and ask the user to choose between an opt-in console and accepting about one busy core.
+- **Stdin byte cache (user, 2026-10-23):** `stn-pty` keeps writing whatever stdin chunk it read, including a whole line in one `write`. Metering happens in `libkernel32-shim.so`, which is preloaded on the game only. Mono's `TermInfoDriver.ReadKeyInternal` calls `stdin.Read()` while `InternalKeyAvailable(0)` is true (`TermInfoDriver.cs` around 978-984). `InternalKeyAvailable` is the `select`/`pselect` this library already interposes. A burst such as `help\n` is one `read(0, …, 1024)` of five bytes; `ReadKey` keeps `h`, and the next `select` sees an empty kernel fd because the rest sits in Mono's stream buffer (`stn-diag/20261023T030556Z/`). The shim therefore also interposes `read` for fd 0. When its cache is empty, the real `read` runs; if that returns more than one byte, the caller gets the first byte and the rest stay in the cache. `select`/`pselect` do not read ahead. While the cache is non-empty and fd 0 is in the read set, fd 0 is reported readable and the stdin-only shape does not enter the kernel. When the cache is empty, that shape keeps the existing 10 ms zero-timeout stretch, and every other call reaches libc. No sleep is inserted between cached bytes. Other file descriptors are unchanged.
 - **Always on:** the PTY bridge and console are enabled for every run (no opt-in flag). The CPU acceptance threshold in F1 is the guard for this decision; failing it blocks S7.
 - **Feasibility spike first:** S1 must prove, before any production code is written, that stub + PTY + no log flag executes a typed command on the real server build. S2–S8 are blocked until the spike passes.
 - **Terminal source:** the image ships its own PTY bridge, `stn-pty`, a small C helper using `forkpty`. `docker run -i`, `docker attach`, and ECS exec must work without `-t`. Requiring `docker run -it` and LD_PRELOAD faking of `isatty`/`tcgetattr` are rejected alternatives.
@@ -133,7 +134,7 @@ Scenario E1 — README matches behavior
 
 **Pack:** four-pack
 
-- **Chunk order:** S1 first (feasibility spike and research); nothing else starts until S1 is approved, because it fixes the kernel32 wiring, the terminal settings and Enter byte, the throttle feasibility, and the `Player.log` path. After S1, S2, S3 and S5 may run in parallel (disjoint files). S4 depends on S2 and S3. S6 depends on S5 (and S1). S7 depends on S4, S5 and S6. S8 depends on S7.
+- **Chunk order:** S1 first (feasibility spike and research); nothing else starts until S1 is approved, because it fixes the kernel32 wiring, the terminal settings and Enter byte, the throttle feasibility, and the `Player.log` path. After S1, S2, S3 and S5 may run in parallel (disjoint files). S4 depends on S2 and S3. S6 depends on S5 (and S1). S9 depends on S2 and on the S7 B1/B2 evidence. S7's remaining scenarios run again after S9. S8 depends on S7.
 - **Parallelism and ownership:** S2/S3/S5 own disjoint files. S5 and S6 both touch `handler.ts`; they must run sequentially (S6 after S5 is approved). The RCON roadmap is parked (see Decisions); no other roadmap may edit `games/stationeers/tool/command/run/*` while this one is in progress.
 - **Scope boundaries:** each implementor may change only the files listed for its task and append evidence to that task's Agent log. If S1 shows neither `<dllmap>` nor `LD_PRELOAD` removes the kernel32 failure, or the end-to-end spike fails, or the throttle is infeasible, mark S2–S8 blocked and ask the user; do not invent another mechanism.
 - **Build for live tests:** build the tool bundle with `pnpm eval build-game-tool --game=stationeers` (produces `games/stationeers/dist/tool.js`), then `docker build --platform=linux/amd64 --file=games/stationeers/Dockerfile games/stationeers` (context is `games/stationeers`, matching `build-game-image`; this downloads about 10 GB of game files, so reuse the local layer cache and the existing local image where possible).
@@ -155,7 +156,7 @@ Scenario E1 — README matches behavior
 
 - [x] User sets this roadmap **Executable** (explicit approval) before implementors treat it as execute-ready. Approved by the user on 2026-10-23.
 
-Drafts are not execute-ready until the user explicitly approves Executable. Review approval does not grant Executable status. The F1 CPU threshold is confirmed: on 2026-10-23 the user approved 15 percentage points above the old direct-spawn idle CPU. S2 still waits for S1 review approval.
+Drafts are not execute-ready until the user explicitly approves Executable. Review approval does not grant Executable status. The F1 CPU threshold is confirmed: on 2026-10-23 the user approved 15 percentage points above the old direct-spawn idle CPU. On 2026-10-23 the user chose the stdin byte cache in `libkernel32-shim.so` (see Decisions) after a whole line reached the game and Mono kept only the first byte.
 
 ## Task list
 
@@ -438,9 +439,9 @@ Verdict: approve. The tail prefers `~/.config/unity3d/Rocketwerkz/rocketstation/
 
 ### S7 — Live integration verification
 
-**Status:** blocked
+**Status:** pending
 
-**Depends on:** S4, S5, S6 approved
+**Depends on:** S4, S5, S6, and S9 approved
 
 **Files:** this roadmap (S7 Agent log only); scratch evidence under untracked `stn-diag/<timestamp>/`
 
@@ -479,6 +480,37 @@ Cleanup removed every `stn-s7-*` container and `stn-s7-vol-*` volume this task c
 **Orchestrator — S7 — 2026-10-23.** Hard block. Acceptance B1 requires one write of `save stnshim1` plus a newline. The approved S3 contract does not require pacing, and that write does not run the command. The same line sent one byte at a time does. S8 stays pending.
 
 **Debug — 2026-10-23.** A single `help\n`, 10s after Ready on `docker run -it`, is delivered intact. `stn-pty` reads 5 bytes from its stdin and writes `help\n` (`0x0a` included) to the PTY master in one `write`. The game's `read(0, …, 1024)` returns those same 5 bytes. Mono's `ReadKey` returns only `h`. `KeyAvailable` then polls an empty fd 0, so `e`, `l`, `p`, and Enter stay in Mono's buffer and `OnEnter` never runs. The `> help` on screen is the outer terminal echo. The game redraws `> h`. The select hook saw the line (`pselect` returned readable) and is not the cause. Evidence: `stn-diag/20261023T030556Z/`. A paced control on the same server printed the help list. Unblocks if input is delivered one byte at a time so each `ReadKey` sees a fresh fd-0 byte, or if B1/B2 are changed to require that pacing. Patching Mono is out of scope.
+
+The user chose the stdin byte cache on 2026-10-23. S7 stays pending until S9 is approved, then B1 and B2 are run again. A later pipe trial (`stn-diag/20261023T032100Z/pipe-stdout.txt`) sent `help` one byte every 30 ms on `docker run -i` and printed `Tags: [launch]` and `Displays helpful stuff`. The same spacing on `docker run -it` was still one line, because the terminal joined the bytes before `stn-pty`.
+
+---
+
+### S9 — Feed stdin to Mono one byte at a time
+
+**Status:** in_progress
+
+**Depends on:** S2 approved, and the S7 debug evidence above
+
+**Files:** `games/stationeers/shim/kernel32_shim.c`, `games/stationeers/shim/stdin_cache_test.sh`
+
+#### Implementor checklist
+
+- [ ] In `kernel32_shim.c`, interpose `read` for fd 0 only. If the cache holds a byte, copy one byte to the caller and return 1. If the cache is empty, call the real `read`. When that returns more than one byte, give the caller the first byte and keep the rest. A non-positive result is returned unchanged. A `read` of any other fd is forwarded untouched. Do not read ahead from `select` or `pselect`.
+- [ ] While the cache is non-empty and fd 0 is in the read set, report fd 0 readable. The existing stdin-only shape (`nfds == 1`, read fd 0, NULL write and except) must not enter the kernel in that case. When the cache is empty, that shape keeps the 10 ms zero-timeout stretch, and every other `select`/`pselect` reaches libc. If a larger read set also contains fd 0 while the cache is non-empty, fd 0 is still marked ready after the real call for the other descriptors.
+- [ ] Do not sleep between cached bytes. Do not change `stn-pty`, the code-page stubs, or the idle-throttle shape for an empty cache.
+- [ ] Add `stdin_cache_test.sh` that builds the library and checks: a five-byte `help\n` on fd 0 comes back as five one-byte reads; a stdin-only zero-timeout `select` returns immediately while the cache is non-empty; the same `select` with an empty cache and no pending input takes about 10 ms and returns not ready; a `read` and a `select` on another fd are not metered.
+- [ ] On a throwaway container only, rebuild the Stationeers image so it contains this library, wait until Ready, wait 10 s, and write `help\n` in one write on `docker run -i`. The command list (`Tags: [launch]` or `Displays helpful stuff`) must appear. Do not pace that live write. Redact credentials. Do not start, stop, or modify the user's `stationeers` container. Remove the throwaway container, volume, and image tag, and list them in the Agent log.
+
+#### Reviewer checklist
+
+- [ ] `read` of fd 0 returns one byte from a multi-byte kernel read, and the rest are not dropped.
+- [ ] `select`/`pselect` do not consume bytes. The stdin-only shape skips the kernel only while the cache is non-empty. The empty-cache 10 ms stretch still applies.
+- [ ] Other file descriptors and other `select` shapes are unchanged. `stn-pty` is unchanged.
+- [ ] The live one-write `help` printed the command list, or the log says why that run could not be believed.
+
+#### Agent log
+
+Pack four-pack. Coder starting 2026-10-23 on master. The locked design is the stdin byte cache in Decisions. Do not pace inside `stn-pty`. Do not touch the user's `stationeers` container.
 
 ---
 
