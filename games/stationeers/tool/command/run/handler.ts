@@ -2,6 +2,7 @@ import { HandlerInput } from "@why-ts/cli";
 import { spawn } from "node:child_process";
 import { appendFile } from "node:fs/promises";
 import fs from "node:fs";
+import { startPlayerLog } from "./playerlog";
 
 const DEFAULT_PTY_BIN = "/home/steam/shim/stn-pty";
 const SHIM_LIBRARY = "/home/steam/shim/libkernel32-shim.so";
@@ -70,10 +71,15 @@ export default async function ({
 	proc.stdout.pipe(process.stdout);
 	proc.stderr.pipe(process.stderr);
 
+	// Unity's Player.log is separate from the --log-file tee. startPlayerLog
+	// returns immediately; stop() on close does not wait out the 30s discovery.
+	const playerLog = startPlayerLog();
+
 	return new Promise<void>((resolve, reject) => {
 		// "close" fires after stdout/stderr have ended, so the last bytes are
 		// in the tee file before it is deleted. "exit" can run earlier.
 		proc.on("close", (code) => {
+			playerLog.stop();
 			console.log("Server process exited with code: ", code);
 
 			try {

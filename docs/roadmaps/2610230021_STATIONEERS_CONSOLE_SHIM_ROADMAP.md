@@ -348,6 +348,10 @@ Verdict: approve. `stn-pty` uses `forkpty` with kernel defaults, copies Enter as
 
 Pack four-pack. Coder starting 2026-10-23 in worktree `roadmap/stationeers-console-shim/S4`. Kernel32 wiring is two `dllentry` lines inside the existing `<dllmap dll="i:kernel32.dll">` block. Do not set an image-wide `LD_PRELOAD`. Rebuild the shim on the game image's glibc.
 
+**Implementor — S4 — 2026-10-23.** `games/stationeers/Dockerfile` and `entrypoint.sh` only, uncommitted, worktree `roadmap/stationeers-console-shim/S4`. Local image `stn-s4-wiring:local`; `kevinresol/stationeers-dedicated-server` was not retagged. Compile stage is the base image plus `gcc` and `libc6-dev` from the Debian snapshot in `debian.sources` (`20260223T000000Z`). `ldd --version` is `ldd (Debian GLIBC 2.41-12+deb13u1) 2.41` in that stage and in the final image. Both outputs are `/home/steam/shim/`, owner `steam:steam`. Highest imported glibc symbol is `GLIBC_2.34`. In the final image `ldd` resolves both, `SetConsoleOutputCP(65001)` and `SetConsoleCP(65001)` return 1, and `stn-pty /bin/true` exits 0. `gcc` is absent. No image `ENV LD_PRELOAD`. Runtime stage does not set `GAME_LOG_FILE` (install stage keeps the previous `ENV` so the Steam layer can be reused). xterm terminfo was already `/usr/share/terminfo/x/xterm`; `ncurses-base` was not installed. Two `dllentry` lines sit after the four `__Internal` entries inside `<dllmap dll="i:kernel32.dll">`. The edit exits 1 if the config file, that block, or any of the four entries is missing (checked on a copy: renamed block, missing file, dropped `ZeroMemory`). `entrypoint.sh` is `set -e` and `node ~/tool.js run -- "$@" 0<&0 &`; the SIGTERM trap and `wait` are unchanged. Under `docker run -i` without `-t`, node fd 0 was `pipe:[18278]`, the same pipe as `stn-pty`, not `/dev/null`. Removed throwaway `stn-s4-fdcheck`. `stationeers` stayed exited at `2026-10-22T11:39:53.851256288Z`.
+
+**Cleaner — S4 — 2026-10-23.** No changes. The glibc pin, dllmap checks, ownership, and stdin inheritance stay as written. The image was not rebuilt.
+
 ---
 
 ### S5 — Wrapper: spawn through `stn-pty`, tee, log-flag rules
@@ -394,7 +398,7 @@ Verdict: approve. The wrapper spawns `stn-pty` with inherited stdin, tees identi
 
 ### S6 — Tail Unity `Player.log` to stderr
 
-**Status:** in_progress
+**Status:** approved
 
 **Depends on:** S1 and S5 approved
 
@@ -402,21 +406,29 @@ Verdict: approve. The wrapper spawns `stn-pty` with inherited stdin, tees identi
 
 #### Implementor checklist
 
-- [ ] Implement a small module that waits (bounded, about 30 s) for the S1-identified `Player.log` (glob fallback `~/.config/unity3d/*/*/Player.log`), then streams appended lines to `process.stderr`; it must also stream content written before it attached.
-- [ ] Stop it cleanly when the server exits; a missing file must never fail or delay startup/shutdown, and a single warning line is acceptable.
-- [ ] Wire it into the handler with the smallest possible change; do not alter the `--log-file` tee or the signal handling.
-- [ ] Tests with a temp directory: file appears late, file pre-exists, never appears, stop-on-exit.
-- [ ] Run tsc, focused tests, bundle, `git diff --check`; paste results in the Agent log.
+- [x] Implement a small module that waits (bounded, about 30 s) for the S1-identified `Player.log` (glob fallback `~/.config/unity3d/*/*/Player.log`), then streams appended lines to `process.stderr`; it must also stream content written before it attached.
+- [x] Stop it cleanly when the server exits; a missing file must never fail or delay startup/shutdown, and a single warning line is acceptable.
+- [x] Wire it into the handler with the smallest possible change; do not alter the `--log-file` tee or the signal handling.
+- [x] Tests with a temp directory: file appears late, file pre-exists, never appears, stop-on-exit.
+- [x] Run tsc, focused tests, bundle, `git diff --check`; paste results in the Agent log.
 
 #### Reviewer checklist
 
-- [ ] No unbounded wait, no leaked watchers/child processes after exit.
-- [ ] Output goes to stderr only.
-- [ ] `handler.ts` changes are limited to the hook.
+- [x] No unbounded wait, no leaked watchers/child processes after exit.
+- [x] Output goes to stderr only.
+- [x] `handler.ts` changes are limited to the hook.
 
 #### Agent log
 
 Pack four-pack. Coder starting 2026-10-23 in worktree `roadmap/stationeers-console-shim/S6`. S1 found no `Player.log` under `/home/steam` when stdout is a PTY. Company/product directory, if a file appears, is `Rocketwerkz/rocketstation`. A missing file must not fail startup.
+
+**Implementor — S6 — 2026-10-23.** Uncommitted. New `playerlog.ts` and `playerlog.test.ts`. `handler.ts` starts the tail and stops it on the helper `close` event. The known path is `~/.config/unity3d/Rocketwerkz/rocketstation/Player.log`, with a newest-file glob fallback. A missing file warns once after 30s and does not hold startup or shutdown. Output goes to stderr. `tsc`, 7 playerlog tests, 14 handler tests, esbuild, and `git diff --check` passed. Residual: S1's PTY run had no `Player.log`, so a normal container may only log that warning.
+
+**Cleaner — S6 — 2026-10-23.** No changes. The tail, tests, and handler hook were already limited to this chunk. Verify commands were not rerun.
+
+#### Reviewer — S6 — 2026-10-23
+
+Verdict: approve. The tail prefers `~/.config/unity3d/Rocketwerkz/rocketstation/Player.log`, otherwise the newest `~/.config/unity3d/*/*/Player.log`. `startPlayerLog` returns immediately. A missing file writes one stderr warning after about 30 seconds and then stops. `stop()` on the helper `close` event clears that timer and does not wait out the deadline. The `handler.ts` change is the start/stop hook only. Residual: a normal PTY run may have no `Player.log`, so the container may only emit that warning. Lands with the Player.log tail in this commit.
 
 ---
 
