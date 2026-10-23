@@ -20,6 +20,9 @@ This repository provides a collection of readily deployable Docker images for de
 - **Valheim**  
   [README](games/valheim/README.md) -
   [Docker Hub](https://hub.docker.com/r/kevinresol/valheim-dedicated-server/tags)
+- **Space Engineers**  
+  [README](games/space-engineers/README.md) -
+  [Docker Hub](https://hub.docker.com/r/kevinresol/space-engineers-dedicated-server/tags)
 
 ## Project Philosophy
 

@@ -219,7 +219,7 @@ Verdict: approve. No critical or important findings. Ports, argument forwarding,
 
 ### T3 — Align Stationeers / Valheim
 
-**Status:** pending
+**Status:** in_progress
 
 **Depends on:** T1
 
@@ -239,13 +239,20 @@ Verdict: approve. No critical or important findings. Ports, argument forwarding,
 
 #### Agent log
 
-<!-- implementor / reviewer append below -->
+#### Reviewer — T3 — 2026-10-23
+
+Verdict: revise. Valheim matches the image and the T1 baseline. Two Stationeers sentences do not.
+
+- Issue: `-file start` is described as a save name plus an optional world id and difficulty. Risk: on a new volume, omitting the world id fails because no world id was provided. Expected change: the save name is required; the world id is required only when that station does not exist yet; difficulty is optional and defaults to `Normal`. Keep `MarsBase Mars2 Normal` as the first-run example. Arguments are positional.
+- Issue: the guide says include `StartLocalHost true` so clients can connect. Risk: this dedicated-server build hosts because `IsBatchMode` is always true; `StartLocalHost` defaults to false and is not what opens the server. Expected change: remove that requirement. The example may keep `StartLocalHost true` as an ordinary settings pair.
+
+Nit, not required for this revise: `GAME_LOG_FILE` is deleted when the server exits. Retry 1 of 2.
 
 ---
 
 ### T4 — Add Space Engineers guide and catalog entry
 
-**Status:** pending
+**Status:** approved
 
 **Depends on:** T1
 
@@ -253,17 +260,21 @@ Verdict: approve. No critical or important findings. Ports, argument forwarding,
 
 #### Implementor checklist
 
-- [ ] Create `games/space-engineers/README.md` using T1's shared structure and style baseline.
-- [ ] Verify Space Engineers image references, ports, data mount/path behavior, startup arguments, and supported configuration against its Dockerfiles and entrypoint; document that arbitrary arguments are not forwarded if confirmed by the implementation.
-- [ ] Use concrete representative examples, mark optional parts with square brackets, and include only supported game-specific guidance.
-- [ ] Add a Space Engineers entry to the root README catalog using its existing format and a verified link to the game README.
+- [x] Create `games/space-engineers/README.md` using T1's shared structure and style baseline.
+- [x] Verify Space Engineers image references, ports, data mount/path behavior, startup arguments, and supported configuration against its Dockerfiles and entrypoint; document that arbitrary arguments are not forwarded if confirmed by the implementation.
+- [x] Use concrete representative examples, mark optional parts with square brackets, and include only supported game-specific guidance.
+- [x] Add a Space Engineers entry to the root README catalog using its existing format and a verified link to the game README.
 
 #### Reviewer checklist
 
-- [ ] Confirm the new guide follows the shared baseline and accurately represents Space Engineers behavior, especially the entrypoint's argument handling and persistent data path.
-- [ ] Confirm the root catalog entry matches the existing list style and links to the new guide.
-- [ ] Confirm no other files or runtime behavior changed.
+- [x] Confirm the new guide follows the shared baseline and accurately represents Space Engineers behavior, especially the entrypoint's argument handling and persistent data path.
+- [x] Confirm the root catalog entry matches the existing list style and links to the new guide.
+- [x] Confirm no other files or runtime behavior changed.
 
 #### Agent log
 
-<!-- implementor / reviewer append below -->
+**Implementor — T4 — 2026-10-23.** Added `games/space-engineers/README.md` and one catalog entry. The entrypoint does not forward arguments. Wine always starts with `-noconsole`, `-path Z:\data`, and `-ignorelastsession`. The example publishes `27016/udp` and mounts `/data`.
+
+#### Reviewer — T4 — 2026-10-23
+
+Verdict: approve. The guide matches the shared baseline and the image. The catalog entry matches the existing list style and links to the new guide. Only those two files changed. Residual: an empty `/data` is not given a config file, and `git diff --check` flags the same two-space catalog line break used by the other titles.
