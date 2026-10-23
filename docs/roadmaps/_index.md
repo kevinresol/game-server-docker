@@ -2,7 +2,7 @@
 
 ## Ready
 
-- `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — Executable; S5 approved. S7 rechecks C2 by copying the log file and sampling stdout after the container stops. Docker holds a no-newline tail until then.
+- `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — Executable; S1 through S7 and S9 approved. S8 documents the measured console.
 
 ## Not Ready
 
@@ -14,7 +14,7 @@ None.
 
 ## Claimed-by
 
-- `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — execute-all-roadmaps orchestrator (2026-10-23). S5 is approved. S7 rechecks C2 after stdout closes.
+- `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — execute-all-roadmaps orchestrator (2026-10-23). S7 is approved. S8 is the README.
 
 ## Human actions needed
 

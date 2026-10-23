@@ -1,6 +1,6 @@
 # Stationeers Console Shim — Task Map
 
-**Status:** Ready — Executable. S7 is blocked on C2 until it samples stdout after the container stops. S5 is approved.
+**Status:** Ready — Executable. S7 is approved. S8 documents the measured console.
 
 ## Goal (locked)
 
@@ -461,7 +461,7 @@ Verdict: approve. The tail prefers `~/.config/unity3d/Rocketwerkz/rocketstation/
 
 ### S7 — Live integration verification
 
-**Status:** blocked
+**Status:** approved
 
 **Depends on:** S4, S5, S6, and S9 approved
 
@@ -469,17 +469,17 @@ Verdict: approve. The tail prefers `~/.config/unity3d/Rocketwerkz/rocketstation/
 
 #### Implementor checklist
 
-- [ ] Build the full image locally and run only throwaway containers with random credentials, a throwaway save, and no published ports unless needed.
-- [ ] Verify Acceptance A1 (grep both container output and `Player.log`), B1, B2, B3 (both the `-i` EOF and no-`-i` cases), B4, C1 (via `/proc/<pid>/cmdline`), C2, C3, C4, D1, D2 and F1; record command, output excerpt (credentials redacted), and result for each.
-- [ ] If a scenario fails, record evidence and mark S7 blocked rather than patching files outside this task's scope; report the failing owner task.
-- [ ] For F1, sample the game's CPU for 60 s with the console active and compare against the S1 direct-spawn baseline; for D1, record the observed stop time and the container exit code.
-- [ ] Clean up all containers, volumes, and images created, and list what was removed.
+- [x] Build the full image locally and run only throwaway containers with random credentials, a throwaway save, and no published ports unless needed.
+- [x] Verify Acceptance A1 (grep both container output and `Player.log`), B1, B2, B3 (both the `-i` EOF and no-`-i` cases), B4, C1 (via `/proc/<pid>/cmdline`), C2, C3, C4, D1, D2 and F1; record command, output excerpt (credentials redacted), and result for each.
+- [x] If a scenario fails, record evidence and mark S7 blocked rather than patching files outside this task's scope; report the failing owner task.
+- [x] For F1, sample the game's CPU for 60 s with the console active and compare against the S1 direct-spawn baseline; for D1, record the observed stop time and the container exit code.
+- [x] Clean up all containers, volumes, and images created, and list what was removed.
 
 #### Reviewer checklist
 
-- [ ] Every Acceptance scenario (A1 through F1) has captured evidence or an explicit, justified "not verifiable".
-- [ ] No credentials in evidence; the user's existing containers/data untouched.
-- [ ] Cleanup list is complete.
+- [x] Every Acceptance scenario (A1 through F1) has captured evidence or an explicit, justified "not verifiable".
+- [x] No credentials in evidence; the user's existing containers/data untouched.
+- [x] Cleanup list is complete.
 
 #### Agent log
 
@@ -542,6 +542,37 @@ Cleanup removed containers `stn-s7-d87976-chown-c3a`, `stn-s7-d87976-c3a`, `stn-
 - F1 pass. Idle, no clients, console active, 60.0s: `process_cpu=31.7% of one core` (limit 42.5). Hottest thread `rocketstation_D` at 15.2%.
 
 Cleanup removed containers `stn-s7-3d5cfc-chown-c3a`, `stn-s7-3d5cfc-c3a`, `stn-s7-3d5cfc-chown-c3b`, `stn-s7-3d5cfc-c3b`, `stn-s7-3d5cfc-chown-a1`, `stn-s7-3d5cfc-a1`, `stn-s7-3d5cfc-chown-b2`, `stn-s7-3d5cfc-b2`, `stn-s7-3d5cfc-chown-b3eof`, `stn-s7-3d5cfc-b3eof`, `stn-s7-3d5cfc-chown-b3null`, `stn-s7-3d5cfc-b3null`, `stn-s7-3d5cfc-chown-c2`, `stn-s7-3d5cfc-c2`, `stn-s7-3d5cfc-chown-f1`, and `stn-s7-3d5cfc-f1`; volumes `stn-s7-vol-3d5cfc-c3a`, `stn-s7-vol-3d5cfc-c3b`, `stn-s7-vol-3d5cfc-a1`, `stn-s7-vol-3d5cfc-b2`, `stn-s7-vol-3d5cfc-b3eof`, `stn-s7-vol-3d5cfc-b3null`, `stn-s7-vol-3d5cfc-c2`, and `stn-s7-vol-3d5cfc-f1`; and tag `stn-s7-live:local` (`docker rmi` rc 0). The earlier `stn-s7-hash` cat container was removed with `--rm`. Retained `stn-s4-wiring:local` (`7f28c086e535`). No `docker system prune`. No `stn-s7-` container, volume, or that tag remains.
+
+**Implementor — S7 — 2026-10-23.** C2 re-run only, on master `a2b443a` (`f1e5d60` plus the roadmap commit). `handler.ts` matches `f1e5d60`. An idle C2 compare is not a tee bug: Docker holds a trailing stdout chunk that has no newline until EOF (`stn-diag/20261023T065117Z/`). A1, B1, B2, B3, B4, C1, C3, D1, D2, and F1 are the earlier full run on this same tee and were not re-run. Evidence: `stn-diag/20261023T060826Z/`. C4 was not verifiable there. C2 evidence: `stn-diag/20261023T070104Z/`. Credentials are `redacted`. `stationeers` stayed `exited 2026-10-22T11:39:53.851256288Z` at start and end. No product files were patched. Status in_progress.
+
+- A1 pass (`stn-diag/20261023T060826Z/`). `docker run -i`, no log flag, `-file start MarsBase Mars2 Normal` plus settings. Logs contain `RakNet successfully hosted with Address: 172.17.0.2:27016` and `Ready`. No `EntryPointNotFoundException` or `DllNotFoundException` for `SetConsoleOutputCP`/`SetConsoleCP`. `Player.log` was absent.
+- B1 pass (`stn-diag/20261023T060826Z/`). After Ready, one write of `save stnshim1` plus a newline on `docker run -i`. `/data/stnshim1/stnshim1.save` appeared (18153 bytes). The console showed `save stnshim1` and `Saving -`.
+- B2 pass (`stn-diag/20261023T060826Z/`). `docker run -it`. Ten seconds after Ready, one write of `help` plus a newline. The list includes `Tags: [launch]` and `Displays helpful stuff`.
+- B3 pass (`stn-diag/20261023T060826Z/`). After `docker run -i`, closing stdin left the game running and `stn-pty` at 0.0% of one core over 5s. `docker run` with no `-i` did the same (0.0%).
+- B4 pass (`stn-diag/20261023T060826Z/`). On `docker run -i`, Node wrapper fd 0 was `pipe:[461]`, not `/dev/null`.
+- C1 pass (`stn-diag/20261023T060826Z/`). With and without `--log-file /home/steam/stationeers.log`, the game cmdline had neither `-logfile` nor `-logFile`, and it included `-noclear`. The with-flag run invoked `node /home/steam/tool.js run --log-file /home/steam/stationeers.log --` because `entrypoint.sh` places container args after `--`.
+- C2 pass. Image `stn-s7-c2:local` (`linux/amd64`, `sha256:25283cb566076cbd58be76757e475d4b162e9368a3fc59d6be4f420252cc5632`), built with `pnpm eval build-game-tool --game=stationeers` then `docker build --platform=linux/amd64 --file=games/stationeers/Dockerfile games/stationeers`. The Steam `app_update` layer stayed cached. `COPY dist/tool.js` was a cache hit of this same bundle: host and image `/home/steam/tool.js` are 231646 bytes, sha256 `ba8f352d141a4b038e566cede55be38ea54a033f4dc7776c2882e7787d88e445`. `kevinresol/stationeers-dedicated-server:latest` stayed `9d04d44d2cd6`. Throwaway `stn-s7-c2` only (volume `stn-s7-c2-vol` chowned `steam:steam`, `--log-driver=json-file`). Because `entrypoint.sh` places container args after `--`, the run was `node /home/steam/tool.js run --log-file /home/steam/stationeers.log -- -file start MarsBase Mars2 Normal` plus settings (`redacted`). After Ready the copied file was 63448 bytes and idle `docker logs` stdout was 63220. The gap was 228 bytes with no newline (`ESC[39;49m`, `ESC[37m`, `ESC[48;1H`, spaces, `ESC[48;1H> `). `docker cp` ran before stop. `docker stop -t 15` returned in 10.4s (`docker stop` rc 0). Container exit 0, `OOMKilled` false, not 137. After stop, `docker logs` stdout and the json log read through `/proc/1/root` were both 77548 bytes. The copied file is a byte prefix of both, and the 228-byte gap is in both. The extra 14100 bytes are shutdown lines written after the copy, including `Ending network connection` and `Server process exited with code:  0`. The copied file contains no byte sequence either final stdout lacks.
+- C3 pass (`stn-diag/20261023T060826Z/`). `-logfile x` and `-logFile -` each exited 1 in 0.6s and 0.5s. The error names `--log-file` and `GAME_LOG_FILE`. The game did not start.
+- C4 not verifiable (`stn-diag/20261023T060826Z/`). No `Player.log`. Stderr once: `Player.log was not found under ~/.config/unity3d; Unity's file log will not be mirrored`.
+- D1 pass (`stn-diag/20261023T060826Z/`). After Ready, `docker stop -t 15` returned in 3.5s (`docker stop` rc 0). Container exit 143, `OOMKilled` false. Events: `kill` signal 15, then `die` exit 143. Logs contain `Ending network connection` and `Server process exited with code:  0`.
+- D2 pass (`stn-diag/20261023T060826Z/`). No entrypoint `set -x` lines. Wrapper argv lines and game `Changed setting` lines are `redacted` in the evidence.
+- F1 pass (`stn-diag/20261023T060826Z/`). Idle, no clients, console active, 60.0s: `process_cpu=31.7% of one core` (limit 42.5). Hottest thread `rocketstation_D` at 15.2%.
+
+Cleanup removed container `stn-s7-c2`, volume `stn-s7-c2-vol`, and tag `stn-s7-c2:local` (`docker rmi` rc 0). The chown container `stn-s7-c2-chown` and the json-log reader `stn-s7-c2-logread` used `--rm`. An earlier `stn-s7-c2-hash` cat of `/home/steam/tool.js` also used `--rm`. Retained `stn-s4-wiring:local` (`7f28c086e535`). No `docker system prune`. No `stn-s7-` container, volume, or that tag remains.
+
+Cleaner — S7 made no changes.
+
+#### Reviewer — S7 — 2026-10-23
+
+Verdict: approve. `git diff f1e5d60 -- games/stationeers/tool/command/run/handler.ts` is empty, so the approved callback tee is unchanged. A1, B1, B2, B3, B4, C1, C3, C4, D1, D2, and F1 are in `stn-diag/20261023T060826Z/`. C2 is in `stn-diag/20261023T070104Z/`.
+
+`containers/a1/docker-stdout.txt` contains `RakNet successfully hosted` and `Ready`, and neither A1 stream contains `EntryPointNotFoundException` or `DllNotFoundException`. B1 shows `save stnshim1`, `Starting NewSave for stnshim1`, and `Created new save`, and `results.json` records `/data/stnshim1/stnshim1.save` at 18153 bytes. B2 `containers/b2/pty.bin` contains `> help`, `Tags: [launch]`, and `Displays helpful stuff`. B3 `b3eof` and `b3null` both reached `Ready`, kept `stn-pty` at 0.0% of one core over 5s, and never logged `Server process exited`. B4 Node fd 0 is `pipe:[461]`. Both C1 cmdline captures include `-noclear` and contain neither `-logfile` nor `-logFile`. C3 stderr names `--log-file` and `GAME_LOG_FILE` and contains no `RakNet`; `results.json` records exit 1 in 0.6s and 0.5s. C4 is not verifiable: no `Player.log` was saved, and `containers/a1/docker-stderr.txt` has the missing-file warning once. D2 has no `set -x` lines. F1 is 31.7% of one core over 60.0s, under the 42.5 limit. Both `progress.txt` files show `stationeers` `exited 2026-10-22T11:39:53.851256288Z` at start and end. Saved evidence has no credential hex and no `ServerPassword` or `ServerAuthSecret` value other than the word `redacted`.
+
+C2: saved `copied-before-stop.log.bin` is a byte prefix of `final-docker-stdout.bin` and `final-json-stdout.bin`. Idle `docker logs` is that file minus a 228-byte tail with no newline (`idle-gap.txt`), and that tail is in both final stdout files. The 14100 bytes after the copy include `Ending network connection` and `Server process exited`. `compare.json` records the same gap and extra on the pre-redaction lengths (file 63448, idle stdout 63220, final stdout 77548), exit 0, and `docker stop -t 15` rc 0.
+
+D1: `containers/a1/d1-inspect.txt` and `d1-events.txt` record `docker stop -t 15`, 3.5s, `kill` signal 15, then `die` exit 143, `OOMKilled` false. The wrapper logged `Server process exited with code:  0`. Residual: this daemon's default stop grace is about 3s, so a bare `docker stop` still kills the game. The passing measurement is the 15s timeout, which covers the roadmap's 10s grace.
+
+The C2 cleanup list names `stn-s7-c2`, `stn-s7-c2-vol`, `stn-s7-c2:local`, and the `--rm` helpers `stn-s7-c2-chown`, `stn-s7-c2-logread`, and `stn-s7-c2-hash`. `c2.py` creates the first five. `progress.txt` logs that removal and still retains `stn-s4-wiring:local`.
 
 ---
 
