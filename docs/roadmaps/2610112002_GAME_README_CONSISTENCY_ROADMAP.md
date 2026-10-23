@@ -189,7 +189,7 @@ Orchestrator: Pack two-pack (coder -> reviewer), end-qa skipped (not six-pack, n
 
 ### T2 — Align Project Zomboid / Satisfactory
 
-**Status:** pending
+**Status:** approved
 
 **Depends on:** T1
 
@@ -197,19 +197,23 @@ Orchestrator: Pack two-pack (coder -> reviewer), end-qa skipped (not six-pack, n
 
 #### Implementor checklist
 
-- [ ] Apply T1's recorded structure and style baseline to both READMEs.
-- [ ] Use T1's applicability matrix, verifying relevant implementation details for both images, to add equivalent guidance wherever supported without copying unrelated settings or behavior.
-- [ ] Replace abstract example placeholders with concrete representative values and correct inconsistent heading levels, command formatting, and shell line continuations.
+- [x] Apply T1's recorded structure and style baseline to both READMEs.
+- [x] Use T1's applicability matrix, verifying relevant implementation details for both images, to add equivalent guidance wherever supported without copying unrelated settings or behavior.
+- [x] Replace abstract example placeholders with concrete representative values and correct inconsistent heading levels, command formatting, and shell line continuations.
 
 #### Reviewer checklist
 
-- [ ] Confirm both READMEs match the approved baseline and include equivalent content for supported topics.
-- [ ] Verify ports, argument forwarding, config/environment-variable behavior, volume/save paths, and startup notes against the corresponding image.
-- [ ] Confirm no unsupported behavior was introduced and useful game-specific information remains.
+- [x] Confirm both READMEs match the approved baseline and include equivalent content for supported topics.
+- [x] Verify ports, argument forwarding, config/environment-variable behavior, volume/save paths, and startup notes against the corresponding image.
+- [x] Confirm no unsupported behavior was introduced and useful game-specific information remains.
 
 #### Agent log
 
-<!-- implementor / reviewer append below -->
+**Implementor — T2 — 2026-10-23.** Worktree `roadmap/readme-consistency/T2`. Both guides follow the T1 section order and `sh` fence style. Project Zomboid documents forwarded arguments, `PZ_` config, `/data` as `-cachedir`, and UDP 16261/16262. Satisfactory uses `kevinresol/satisfactory-dedicated-server:latest`, forwards arguments to `FactoryServer.sh`, and documents 7777 UDP and TCP plus 8888/tcp. `git diff --check` was clean. No image run.
+
+#### Reviewer — T2 — 2026-10-23
+
+Verdict: approve. No critical or important findings. Ports, argument forwarding, config, and save paths match the image sources. Residual: the Satisfactory `-Port` sentence blends roles the wiki splits, but the example publishes the correct three ports. Optional RCON `27015/tcp` is the bundled `RCONPort` without a stated protocol. Unquoted `$(pwd)` matches the approved T1 examples.
 
 ---
 

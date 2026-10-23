@@ -1,29 +1,29 @@
-# Satisfactory Factor Dedicated Server
+# Satisfactory Dedicated Server
 
 ## Run Server
 
-```
+```sh
 docker run -d \
   -v $(pwd)/satisfactory:/data \
-  -p 7777:7777/udp -p 27015:27015/udp \
-  kevinresol/satisfactory-factor-dedicated-server[:<tagname>]
-  [-multihome=0.0.0.0] \
-  [-ServerQueryPort=<value>] \
-  [-BeaconPort=<value>] \
-  [-Port=<value>] \
+  -p 7777:7777/udp \
+  -p 7777:7777/tcp \
+  -p 8888:8888/tcp \
+  kevinresol/satisfactory-dedicated-server:latest \
+  [-Port=7777] \
+  [-ReliablePort=8888] \
   [...]
 ```
 
-### Script Arguments
+## Script Arguments
 
-Additional args after the image name (such as `-multihome` in the example) will be forwarded to the server executable. See more in the [office doc](https://satisfactory.fandom.com/wiki/Dedicated_servers).
+Arguments after the image name are forwarded to `FactoryServer.sh`. The example shows the port overrides from the [Satisfactory dedicated servers guide](https://satisfactory.wiki.gg/wiki/Dedicated_servers). `-Port` defaults to 7777 for UDP and TCP game traffic and the HTTPS API. `-ReliablePort` defaults to 8888/tcp for reliable messaging. The guide requires the standard port's public and internal numbers to match, so the example publishes 7777 on both sides of `-p`. `-ExternalReliablePort` can remap the reliable port when the published number differs.
 
-If using docker-compose, define any additional arguments in the command section of your service definition.
+With Docker Compose, put the same optional server arguments in the service's `command` list.
 
-### Volumes
+## Configuration
 
-Mounting a volume with your server save files is essential. This is done using the `-v` flag in `docker run` or the `volumes` field in docker-compose. The volume is mapped to the container's `/data` directory.
+Initial setup is done in the in-game Server Manager: add the server, set its name and administrator password, then create a game or import a save. A player join password can be set in that same screen. The entrypoint runs `FactoryServer.sh` with the forwarded arguments and does not apply environment variables to server settings.
 
-### Configuration
+## Volumes
 
-Satisfactory comes with a pretty decent Server Manager in-game. You need to use it to create a new game and configure the server.
+Mount a persistent volume at `/data` so server files survive container replacement. The image points both the install directory's `FactoryGame/Saved` and `/home/steam/.config/Epic/FactoryGame/Saved` at `/data`. Save games are stored at `/data/SaveGames/server`, the settings file for the default port is `/data/SaveGames/ServerSettings.7777.sav`, and install-directory logs are stored at `/data/Logs`. In Docker Compose, use the service's `volumes` field to map a host directory such as `./satisfactory` to `/data`.

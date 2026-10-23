@@ -2,7 +2,7 @@
 
 ## Ready
 
-- `2610112002_GAME_README_CONSISTENCY_ROADMAP.md` — Executable; T1 approved; T2/T3/T4 in progress
+- `2610112002_GAME_README_CONSISTENCY_ROADMAP.md` — Executable; T1 and T2 approved; T3/T4 in review
 - `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — Executable; S1 and S2 approved; F1 confirmed at 15 percentage points; S3/S5 in progress
 
 ## Not Ready
