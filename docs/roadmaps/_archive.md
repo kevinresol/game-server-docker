@@ -1,3 +1,4 @@
 # Roadmap Completes
 
 - `2610112002_GAME_README_CONSISTENCY_ROADMAP.md` — completed 2026-10-23. T1–T4 approved. Pack two-pack; end-qa skipped (not six-pack, no `end-qa: true`, no user request). Residual: Stationeers guide does not say `GAME_LOG_FILE` is deleted on exit; Satisfactory `-Port` sentence blends wiki roles; unquoted `$(pwd)` matches the T1 examples; Space Engineers does not seed an empty `/data` with a config file.
+- `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — completed 2026-10-23. S1–S9 approved. Pack four-pack; end-qa skipped (not six-pack, no `end-qa: true`, no user request). Residual: the stdin-cache test does not call `pselect`, a kernel read is capped at 4096 bytes, and `ioctl` forwards one pointer argument; a one-token `-logfile=/path` is not rejected; the README does not say the console log file is deleted on exit; a bare `docker stop` on a daemon with about a 3s grace exits 137.

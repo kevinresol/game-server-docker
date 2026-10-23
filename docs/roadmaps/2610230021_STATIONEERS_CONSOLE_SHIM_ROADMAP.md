@@ -1,6 +1,6 @@
 # Stationeers Console Shim — Task Map
 
-**Status:** Ready — Executable. S7 is approved. S8 documents the measured console.
+**Status:** Completed 2026-10-23. S1–S9 approved. Pack four-pack; end-qa skipped.
 
 ## Goal (locked)
 
@@ -654,7 +654,7 @@ Live evidence `stn-diag/20261023T043018Z/` (the earlier `stn-diag/20261023T04043
 
 ### S8 — README documentation
 
-**Status:** pending
+**Status:** approved
 
 **Depends on:** S7 approved
 
@@ -662,17 +662,38 @@ Live evidence `stn-diag/20261023T043018Z/` (the earlier `stn-diag/20261023T04043
 
 #### Implementor checklist
 
-- [ ] Document sending commands over stdin (`docker run -i` / `docker attach`), with concrete example values and `[...]` around optional parts, per `AGENTS.md` README rules.
-- [ ] Document the optional `--log-file`/`GAME_LOG_FILE` meaning (console output duplicate; no game log flag passed) and that manual `-logfile`/`-logFile` is rejected.
-- [ ] Mention that `-noclear` is added automatically, that Unity's own log is mirrored to stderr, that `--log-file` no longer contains Unity's own log (migration note for users who relied on the old file), and the measured idle CPU note from S7.
-- [ ] Document only behavior verified in S7 and specific to this image; do not alter other READMEs or the common structure.
+- [x] Document sending commands over stdin (`docker run -i` / `docker attach`), with concrete example values and `[...]` around optional parts, per `AGENTS.md` README rules.
+- [x] Document the optional `--log-file`/`GAME_LOG_FILE` meaning (console output duplicate; no game log flag passed) and that manual `-logfile`/`-logFile` is rejected.
+- [x] Mention that `-noclear` is added automatically, that Unity's own log is mirrored to stderr, that `--log-file` no longer contains Unity's own log (migration note for users who relied on the old file), and the measured idle CPU note from S7.
+- [x] Document only behavior verified in S7 and specific to this image; do not alter other READMEs or the common structure.
 
 #### Reviewer checklist
 
-- [ ] Every documented behavior is backed by S7 evidence.
-- [ ] Examples use concrete values, not abstract placeholders; optional parts bracketed.
-- [ ] Only `games/stationeers/README.md` changed.
+- [x] Every documented behavior is backed by S7 evidence.
+- [x] Examples use concrete values, not abstract placeholders; optional parts bracketed.
+- [x] Only `games/stationeers/README.md` changed.
 
 #### Agent log
 
 <!-- implementor / reviewer append below -->
+
+**Implementor — S8 — 2026-10-23.** `games/stationeers/README.md` only, plus this log. Uncommitted on master `f00563b`. The runtime stage does not set `GAME_LOG_FILE`; `command.ts` still falls back to that env. Documented commands: `docker run -i` with one write of `save stnshim1` and a newline (save `/data/stnshim1/stnshim1.save`); `docker run -it` with one write of `help`; a container started with `-i` keeps stdin open for a later `docker attach`; `-file start MarsBase Mars2 Normal`; `-p 27016:27016/udp -p 27015:27015/udp` and `/data`; `node /home/steam/tool.js run --log-file /home/steam/stationeers.log --` because `entrypoint.sh` places container arguments after `--`, with `docker run` using `-e GAME_LOG_FILE=/home/steam/stationeers.log`; rejected `-logfile` and `-logFile` (`Do not specify -logfile manually in the rest arguments, use the --log-file flag or GAME_LOG_FILE env var instead.`, game does not start); automatic `-noclear` on the game command line; stderr `Player.log was not found under ~/.config/unity3d; Unity's file log will not be mirrored` (the helper mirrors `Player.log` to stderr when the file appears; the console log is not that Unity log); idle 60s sample 31.7% of one core, ceiling 42.5% of one core, old direct-spawn sample 27.5% of one core; `docker stop -t 15` (3.5s exit 143 and 10.4s exit 0, wrapper `Server process exited with code:  0`; bare `docker stop` exit 137 at about 3s grace); `chown` to `steam:steam` or the first save fails with `Could not create save directory.` `git diff --check` exited 0.
+
+Cleaner — S8 edited games/stationeers/README.md only: dropped a repeated -noclear sentence, the node lab line, a lead-in that restated the rejection quote, and an extra “console log is not Player.log” sentence.
+
+#### Reviewer — S8 — 2026-10-23
+
+Verdict: revise. Status stays `in_progress`. Reviewer boxes stay open. Cleanup is in the README only and does not add those two claims.
+
+- Issue: the Configuration section says the helper mirrors Unity's `Player.log` to stderr when that file appears. Risk: S7 C4 is not verifiable. No `Player.log` was saved, and the only measured stderr line is `Player.log was not found under ~/.config/unity3d; Unity's file log will not be mirrored`. Expected change: delete the mirroring sentence. Keep the missing-file warning and the note that readers of the old `--log-file` will not find Unity lines there.
+- Issue: the Volumes section says a save on a root-owned volume fails with `Could not create save directory.` Risk: that sentence is not in the S7 evidence summary, the S7 reviewer note, or the saved diag text. Expected change: keep the S7 setup that a new volume is chowned from root to `steam:steam` (`s7_verify.py` and `c2.py` run `chown -R steam:steam /data` as root). Drop the unmeasured failure quote.
+
+**Implementor — S8 revise — 2026-10-23.** Revise attempt 2. `games/stationeers/README.md` only, plus this log. Status stays `in_progress`. Deleted `The helper mirrors Unity's Player.log to stderr when that file appears.` Kept the measured stderr warning `Player.log was not found under ~/.config/unity3d; Unity's file log will not be mirrored` and the note that readers of the old `--log-file` will not find Unity lines there. Deleted the quote `Could not create save directory.` Kept the measured setup: a new volume is chowned from root to `steam:steam` (`chown -R steam:steam /data`). `git diff --check` exited 0.
+
+#### Reviewer — S8 revise — 2026-10-23
+
+Verdict: approve. Both deletions are in `games/stationeers/README.md`. The sentence that the helper mirrors Unity's `Player.log` to stderr when that file appears is gone. The measured warning `Player.log was not found under ~/.config/unity3d; Unity's file log will not be mirrored` remains, and readers of the old `--log-file` are still told they will not find Unity lines there. The quote `Could not create save directory.` is gone. A new root-owned volume still documents `chown -R steam:steam /data`.
+
+The rest still matches S7. `docker run -i` documents one write of `save stnshim1` and the save at `/data/stnshim1/stnshim1.save`. `docker run -it` documents one write of `help`. `docker attach` is only that same `-i` stdin. `--log-file /home/steam/stationeers.log` is a console-stdout duplicate. `-logfile` and `-logFile` are rejected and the game does not start. The wrapper adds `-noclear` unless it is already present. Idle CPU is 31.7% of one core, ceiling 42.5% of one core. `docker stop -t 15` is the documented stop. The runtime stage does not set `GAME_LOG_FILE`. The README does not say the helper appends `-logfile` to the game. Examples use concrete values, and optional parts are in square brackets. The S8 product diff is `games/stationeers/README.md` only. Cleaner — S8 revise made no further changes. Residual: none.
+
+End-of-roadmap QA skipped. Pack is four-pack, Protocol does not set `end-qa: true`, and this run did not request end QA. All chunks S1–S9 are approved.

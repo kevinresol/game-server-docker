@@ -2,7 +2,7 @@
 
 ## Ready
 
-- `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — Executable; S1 through S7 and S9 approved. S8 documents the measured console.
+None.
 
 ## Not Ready
 
@@ -14,17 +14,17 @@ None.
 
 ## Claimed-by
 
-- `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — execute-all-roadmaps orchestrator (2026-10-23). S7 is approved. S8 is the README.
+None.
 
 ## Human actions needed
 
-None. On 2026-10-23 the user chose the stdin byte cache in `libkernel32-shim.so` for `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md`. F1 remains 15 percentage points above the old direct-spawn idle CPU.
+None.
 
 ## Dependency sketch
 
-- Game README consistency: complete (T1, then T2/T3/T4). Stationeers README from T3 documents the current helper; console-shim S8 may replace that section after S7.
-- Stationeers RCON save (parked): T1 → user contract confirmation → T2 → T3/T4 in parallel.
-- Stationeers console shim: S1 → S2/S3/S5 in parallel; S2+S3 → S4; S5 → S6; S4+S5+S6 → S7 evidence; S9 (stdin byte cache) → S7 re-run → S8. Shares `games/stationeers/tool/command/run/handler.ts` with the parked RCON roadmap (T3): if revived, run it only after this roadmap completes.
+- Game README consistency: complete (T1, then T2/T3/T4).
+- Stationeers RCON save (parked): T1 → user contract confirmation → T2 → T3/T4 in parallel. Shares `games/stationeers/tool/command/run/handler.ts` with the completed console shim: run it only after that shim, which is now complete.
+- Stationeers console shim: complete (S1–S9).
 
 ## Completes
 
