@@ -2,7 +2,7 @@
 
 ## Ready
 
-- `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — Executable; S1, S2, and S5 approved; F1 confirmed at 15 percentage points; S3 in review; S6 starting
+- `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — Executable; S1, S2, S3, and S5 approved; F1 confirmed at 15 percentage points; S4 and S6 in progress
 
 ## Not Ready
 

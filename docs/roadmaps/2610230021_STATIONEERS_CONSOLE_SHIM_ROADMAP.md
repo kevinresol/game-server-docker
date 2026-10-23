@@ -286,7 +286,7 @@ Verdict: approve. `kernel32_shim.c` exports `SetConsoleOutputCP` and `SetConsole
 
 ### S3 — `stn-pty` PTY bridge
 
-**Status:** in_progress
+**Status:** approved
 
 **Depends on:** S1 approved (terminal settings and Enter byte are fixed by S1; the CLI contract is frozen in Decisions)
 
@@ -294,18 +294,18 @@ Verdict: approve. `kernel32_shim.c` exports `SetConsoleOutputCP` and `SetConsole
 
 #### Implementor checklist
 
-- [ ] Implement the frozen CLI contract: `forkpty` child exec, the terminal settings and Enter byte S1 proved to work, 200x50 window size, `TERM=xterm` default, bidirectional copy master↔stdio with a `poll` loop. Set `LD_PRELOAD` for the child only if the wrapper passes it in the environment; the helper itself must not be preloaded.
-- [ ] Forward `SIGINT`/`SIGTERM` to the child, propagate its exit status (`128+n` for signals), and keep running when stdin reaches EOF: drop fd 0 from the `poll` set on EOF and never close the PTY master while the child lives.
-- [ ] Handle `SIGCHLD`, partial writes, and `EINTR` correctly; drain remaining PTY output before exiting.
-- [ ] Compile with `-Wall -Wextra -Werror` in a throwaway `gcc` container (`-lutil` as needed).
-- [ ] `stn_pty_test.sh` uses a trivial child (for example a shell script that prints `isatty` results for fd 0/1 and echoes lines) to prove: both fds are TTYs under `docker run -i` without `-t`; input lines reach the child; exit status propagates for both normal exit and signal death; SIGTERM is forwarded; EOF on stdin (explicit and `/dev/null`) leaves the child running and does not make the helper spin (measure its CPU over a few seconds).
-- [ ] Run the test script in a throwaway container and paste the output into the Agent log.
+- [x] Implement the frozen CLI contract: `forkpty` child exec, the terminal settings and Enter byte S1 proved to work, 200x50 window size, `TERM=xterm` default, bidirectional copy master↔stdio with a `poll` loop. Set `LD_PRELOAD` for the child only if the wrapper passes it in the environment; the helper itself must not be preloaded.
+- [x] Forward `SIGINT`/`SIGTERM` to the child, propagate its exit status (`128+n` for signals), and keep running when stdin reaches EOF: drop fd 0 from the `poll` set on EOF and never close the PTY master while the child lives.
+- [x] Handle `SIGCHLD`, partial writes, and `EINTR` correctly; drain remaining PTY output before exiting.
+- [x] Compile with `-Wall -Wextra -Werror` in a throwaway `gcc` container (`-lutil` as needed).
+- [x] `stn_pty_test.sh` uses a trivial child (for example a shell script that prints `isatty` results for fd 0/1 and echoes lines) to prove: both fds are TTYs under `docker run -i` without `-t`; input lines reach the child; exit status propagates for both normal exit and signal death; SIGTERM is forwarded; EOF on stdin (explicit and `/dev/null`) leaves the child running and does not make the helper spin (measure its CPU over a few seconds).
+- [x] Run the test script in a throwaway container and paste the output into the Agent log.
 
 #### Reviewer checklist
 
-- [ ] The contract in Decisions is implemented exactly, including the EOF and signal behavior.
-- [ ] No fd leaks into the child; no zombie processes; no busy loop in the helper itself.
-- [ ] Test evidence covers each bullet, not just the happy path.
+- [x] The contract in Decisions is implemented exactly, including the EOF and signal behavior.
+- [x] No fd leaks into the child; no zombie processes; no busy loop in the helper itself.
+- [x] Test evidence covers each bullet, not just the happy path.
 
 #### Agent log
 
@@ -315,11 +315,15 @@ Pack four-pack. Coder starting 2026-10-23 in worktree `roadmap/stationeers-conso
 
 **Cleaner — S3 — 2026-10-23.** No changes. `stn_pty.c` and `stn_pty_test.sh` already match the frozen contract. The gcc container was not re-run.
 
+#### Reviewer — S3 — 2026-10-23
+
+Verdict: approve. `stn-pty` uses `forkpty` with kernel defaults, copies Enter as `\n`, and does not close the PTY master on stdin EOF. Signals and exit status propagate. The helper is not preloaded. Residual: a whole line in one PTY write is still unproved against Mono. The frozen contract does not require pacing.
+
 ---
 
 ### S4 — Dockerfile and entrypoint wiring
 
-**Status:** pending
+**Status:** in_progress
 
 **Depends on:** S2 and S3 approved
 
@@ -342,7 +346,7 @@ Pack four-pack. Coder starting 2026-10-23 in worktree `roadmap/stationeers-conso
 
 #### Agent log
 
-<!-- implementor / reviewer append below -->
+Pack four-pack. Coder starting 2026-10-23 in worktree `roadmap/stationeers-console-shim/S4`. Kernel32 wiring is two `dllentry` lines inside the existing `<dllmap dll="i:kernel32.dll">` block. Do not set an image-wide `LD_PRELOAD`. Rebuild the shim on the game image's glibc.
 
 ---
 
@@ -390,7 +394,7 @@ Verdict: approve. The wrapper spawns `stn-pty` with inherited stdin, tees identi
 
 ### S6 — Tail Unity `Player.log` to stderr
 
-**Status:** pending
+**Status:** in_progress
 
 **Depends on:** S1 and S5 approved
 
@@ -412,7 +416,7 @@ Verdict: approve. The wrapper spawns `stn-pty` with inherited stdin, tees identi
 
 #### Agent log
 
-<!-- implementor / reviewer append below -->
+Pack four-pack. Coder starting 2026-10-23 in worktree `roadmap/stationeers-console-shim/S6`. S1 found no `Player.log` under `/home/steam` when stdout is a PTY. Company/product directory, if a file appears, is `Rocketwerkz/rocketstation`. A missing file must not fail startup.
 
 ---
 
