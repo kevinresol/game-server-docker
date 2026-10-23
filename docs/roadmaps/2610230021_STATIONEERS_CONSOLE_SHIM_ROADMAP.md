@@ -1,6 +1,6 @@
 # Stationeers Console Shim — Task Map
 
-**Status:** Ready — Executable. S9 feeds stdin to Mono one byte at a time.
+**Status:** Ready — Executable. S9 is approved. S7 re-runs live acceptance.
 
 ## Goal (locked)
 
@@ -487,7 +487,7 @@ The user chose the stdin byte cache on 2026-10-23. S7 stays pending until S9 is 
 
 ### S9 — Feed stdin to Mono one byte at a time
 
-**Status:** in_progress
+**Status:** approved
 
 **Depends on:** S2 approved, and the S7 debug evidence above
 
@@ -495,22 +495,69 @@ The user chose the stdin byte cache on 2026-10-23. S7 stays pending until S9 is 
 
 #### Implementor checklist
 
-- [ ] In `kernel32_shim.c`, interpose `read` for fd 0 only. If the cache holds a byte, copy one byte to the caller and return 1. If the cache is empty, call the real `read`. When that returns more than one byte, give the caller the first byte and keep the rest. A non-positive result is returned unchanged. A `read` of any other fd is forwarded untouched. Do not read ahead from `select` or `pselect`.
-- [ ] While the cache is non-empty and fd 0 is in the read set, report fd 0 readable. The existing stdin-only shape (`nfds == 1`, read fd 0, NULL write and except) must not enter the kernel in that case. When the cache is empty, that shape keeps the 10 ms zero-timeout stretch, and every other `select`/`pselect` reaches libc. If a larger read set also contains fd 0 while the cache is non-empty, fd 0 is still marked ready after the real call for the other descriptors.
-- [ ] Do not sleep between cached bytes. Do not change `stn-pty`, the code-page stubs, or the idle-throttle shape for an empty cache.
-- [ ] Add `stdin_cache_test.sh` that builds the library and checks: a five-byte `help\n` on fd 0 comes back as five one-byte reads; a stdin-only zero-timeout `select` returns immediately while the cache is non-empty; the same `select` with an empty cache and no pending input takes about 10 ms and returns not ready; a `read` and a `select` on another fd are not metered.
-- [ ] On a throwaway container only, rebuild the Stationeers image so it contains this library, wait until Ready, wait 10 s, and write `help\n` in one write on `docker run -i`. The command list (`Tags: [launch]` or `Displays helpful stuff`) must appear. Do not pace that live write. Redact credentials. Do not start, stop, or modify the user's `stationeers` container. Remove the throwaway container, volume, and image tag, and list them in the Agent log.
+- [x] In `kernel32_shim.c`, interpose `read` for fd 0 only. If the cache holds a byte, copy one byte to the caller and return 1. If the cache is empty, call the real `read`. When that returns more than one byte, give the caller the first byte and keep the rest. A non-positive result is returned unchanged. A `read` of any other fd is forwarded untouched. Do not read ahead from `select` or `pselect`.
+- [x] While the cache is non-empty and fd 0 is in the read set, report fd 0 readable. The existing stdin-only shape (`nfds == 1`, read fd 0, NULL write and except) must not enter the kernel in that case. When the cache is empty, that shape keeps the 10 ms zero-timeout stretch, and every other `select`/`pselect` reaches libc. If a larger read set also contains fd 0 while the cache is non-empty, fd 0 is still marked ready after the real call for the other descriptors.
+- [x] Do not sleep between cached bytes. Do not change `stn-pty`, the code-page stubs, or the idle-throttle shape for an empty cache.
+- [x] Add `stdin_cache_test.sh` that builds the library and checks: a five-byte `help\n` on fd 0 comes back as five one-byte reads; a stdin-only zero-timeout `select` returns immediately while the cache is non-empty; the same `select` with an empty cache and no pending input takes about 10 ms and returns not ready; a `read` and a `select` on another fd are not metered.
+- [x] On a throwaway container only, rebuild the Stationeers image so it contains this library, wait until Ready, wait 10 s, and write `help\n` in one write on `docker run -i`. The command list (`Tags: [launch]` or `Displays helpful stuff`) must appear. Do not pace that live write. Redact credentials. Do not start, stop, or modify the user's `stationeers` container. Remove the throwaway container, volume, and image tag, and list them in the Agent log.
 
 #### Reviewer checklist
 
-- [ ] `read` of fd 0 returns one byte from a multi-byte kernel read, and the rest are not dropped.
-- [ ] `select`/`pselect` do not consume bytes. The stdin-only shape skips the kernel only while the cache is non-empty. The empty-cache 10 ms stretch still applies.
-- [ ] Other file descriptors and other `select` shapes are unchanged. `stn-pty` is unchanged.
-- [ ] The live one-write `help` printed the command list, or the log says why that run could not be believed.
+- [x] `read` of fd 0 returns one byte from a multi-byte kernel read, and the rest are not dropped.
+- [x] `select`/`pselect` do not consume bytes. The stdin-only shape skips the kernel only while the cache is non-empty. The empty-cache 10 ms stretch still applies.
+- [x] Other file descriptors and other `select` shapes are unchanged. `stn-pty` is unchanged.
+- [x] The live one-write `help` printed the command list, or the log says why that run could not be believed.
 
 #### Agent log
 
 Pack four-pack. Coder starting 2026-10-23 on master. The locked design is the stdin byte cache in Decisions. Do not pace inside `stn-pty`. Do not touch the user's `stationeers` container.
+
+Implementor — S9. `kernel32_shim.c` interposes `read` for fd 0 with a static 4096-byte cache under a mutex. A real read takes at most that capacity, returns the first byte, and keeps the rest; a non-positive result is returned unchanged. Other fds are forwarded and do not touch the cache. `select`/`pselect` do not read ahead. While the cache is non-empty, the stdin-only shape returns ready immediately and does not enter the kernel. A larger read set still reaches libc as a zero-timeout poll of the other descriptors, because fd 0 is already readable, and then fd 0 is marked. An empty cache still stretches that stdin-only zero timeout to 10 ms. No sleep was added between cached bytes. `SetConsoleOutputCP`, `SetConsoleCP`, and `stn-pty.c` were not changed. `stdin_cache_test.sh` under `gcc:13` (`linux/amd64`):
+
+```
+cc: gcc -shared -fPIC -O2 -Wall -Wextra -Werror -o stdin_cache.so kernel32_shim.c
+COMPILE_OK 13.5.0
+empty_select_us=10218 rc=0 ready=0
+cached_select_us=0 rc=1 ready=1
+bytes=68 65 6c 70 0a
+drained_select_us=10132 rc=0 ready=0
+other_read=5 us=2
+other_select_us=2 rc=0 ready=0
+ALL_PASS
+```
+
+`git diff --check` on the touched shim and roadmap files was clean.
+
+**Orchestrator — S9 — 2026-10-23.** First live check failed. One write of `help\n` on `docker run -i` left the prompt as `> ` with no `h` and no command list (`stn-diag/20261023T040439Z/`). The unit test passed. Revise the shim only: do not hold the cache mutex across the blocking real `read`, and prove whether the game's `read` hits this interposer (a 4096-byte `read` syscall means it does; a 1024-byte one means it does not). Then repeat the one-write live `help`. Live check did not print the command list. Image `stn-s9-cache:local` (`linux/amd64`; Steam layer cached; shim compile was not cached). `kevinresol/stationeers-dedicated-server` was not retagged. Throwaway container `stn-s9-help`, volume `stn-s9-vol` chowned `steam:steam` by `stn-s9-chown`, `docker run -i` with no `-t`, args `-file start MarsBase Mars2 Normal` plus redacted `-settings`. `stationeers` stayed `exited 2026-10-22T11:39:53.851256288Z` before and after. Logs contained `Ready` and `RakNet successfully hosted with Address: 172.17.0.2:27016`. Ten seconds later one write of `help\n` returned 5. Over the next 30s the logs did not contain `Tags: [launch]` or `Displays helpful stuff`, and they did not contain `help`. The prompt stayed `> ` with no `h`. Last game line: `04:07:26: Created new save`. No other files were patched. S9 stays in_progress. Evidence: `stn-diag/20261023T040439Z/`. Cleanup removed `stn-s9-help`, `stn-s9-chown`, volume `stn-s9-vol`, and tag `stn-s9-cache:local` (`docker rmi` rc=0). No leftover `stn-s9-` container, volume, or that tag.
+
+**Implementor — S9 revise.** The cache mutex is not held across the kernel `read`. The bytes land in a stack buffer, then one byte is returned and the rest are published under the lock. A second fd-0 reader waits until that fill is published instead of starting another kernel read. `select`/`pselect` report fd 0 ready only while a cached byte remains, and that short-circuit leaves fd 0 set in the caller's read set. An empty cache still stretches the stdin-only zero timeout to about 10 ms. Mono's `InternalKeyAvailable` returns the `FIONREAD` count after `select`, so `ioctl` on fd 0 adds the cached count for `FIONREAD` and `TIOCINQ`. Other descriptors are unchanged. `stn-pty.c`, the Dockerfile, and the wrapper were not edited. `stdin_cache_test.sh` under `gcc:13` (`linux/amd64`):
+
+```
+cc: gcc -shared -fPIC -O2 -Wall -Wextra -Werror -o stdin_cache.so kernel32_shim.c
+COMPILE_OK 13.5.0
+empty_select_us=10203 rc=0 ready=0
+cached_select_us=0 rc=1 ready=1
+cached_fionread=4
+other_fionread=5
+bytes=68 65 6c 70 0a
+drained_select_us=10406 rc=0 ready=0
+other_read=5 us=5
+other_select_us=2 rc=0 ready=0
+blocked_select_us=10536 rc=0 ready=0
+ALL_PASS
+```
+
+Live check: `docker run -i` with no `-t` (plus `SYS_PTRACE` and `seccomp=unconfined` so strace could attach), image `stn-s9-cache:local`, throwaway `stn-s9-rev2`, volume `stn-s9-vol` chowned `steam:steam` by `stn-s9-chown`. Args `-file start MarsBase Mars2 Normal` plus redacted `-settings`. `stationeers` stayed `exited 2026-10-22T11:39:53.851256288Z` before and after. Shim was mapped in the game. Ten seconds after Ready, one write of `help\n` returned 5. Game pid 15, `strace -f -tt -s 64 -e trace=read,write -p 15`: `164   04:34:15.762645 read(0, "help\n", 4096) = 5`. The 4096 count means this hook ran. `stn-pty` pid 14: `14    04:34:15.737789 write(4, "help\n", 5) = 5` (that write is the PTY master; the same trace then shows `> help` on stdout). Logs contain `Tags: [launch]` and `Displays helpful stuff`. Evidence: `stn-diag/20261023T043018Z/`. Cleanup removed `stn-s9-rev2`, `stn-s9-chown`, volume `stn-s9-vol`, and tag `stn-s9-cache:local` (`docker rmi` rc=0). S9 stays in_progress.
+
+**Cleaner — S9.** No changes. `kernel32_shim.c` and `stdin_cache_test.sh` have no dead comments or duplicated steps. The gcc test was not rerun.
+
+**Reviewer — S9 — 2026-10-23.** Verdict: approve. Residual: `stdin_cache_test.sh` does not call `pselect` (that path matches `select` and does not pop); a kernel read is capped at 4096 so anything beyond it stays in the kernel; `ioctl` always forwards one pointer argument. The live console still reached Ready and ran `help`.
+
+`read` in `games/stationeers/shim/kernel32_shim.c` drops the cache mutex before `next(0, tmp, 4096)`, returns `tmp[0]`, and copies the tail into the cache. A second fd-0 reader waits on `stdin_fill_busy` instead of starting another kernel read. `select` and `pselect` never call `read` or `cache_pop`. While the cache is non-empty, the stdin-only shape returns 1 with fd 0 left set and does not enter the kernel; a larger read set polls the other descriptors at zero timeout and then marks fd 0. An empty cache still stretches that stdin-only zero timeout by `STDIN_SPIN_MS` (10). `ioctl` on fd 0 adds `cache_count()` for `FIONREAD` and `TIOCINQ` after the real call, which is what keeps `InternalKeyAvailable` true once the kernel buffer has been drained into the cache. Other fds and other `select` shapes go to libc. `git diff` does not touch `stn-pty.c`.
+
+Independent `gcc:13` (`linux/amd64`) run of `stdin_cache_test.sh`: `COMPILE_OK 13.5.0`, `empty_select_us=10146 rc=0 ready=0`, `cached_select_us=0 rc=1 ready=1`, `cached_fionread=4`, `other_fionread=5`, `bytes=68 65 6c 70 0a`, `drained_select_us=10170`, `other_read=5 us=5`, `other_select_us=2`, `blocked_select_us=10560 rc=0 ready=0`, `ALL_PASS`. The blocked-select sample is the mutex proof: a thread sitting in the real fd-0 read did not stop the 10 ms empty-cache `select`.
+
+Live evidence `stn-diag/20261023T043018Z/` (the earlier `stn-diag/20261023T040439Z/result.txt` `help_list=false` is context only). `docker run -i` with no `-t`, one write `help\n` (`progress.txt` `write_returned=5`). `docker-stdout.txt` shows the prompt filling `> h`, `> he`, `> hel`, `> help`, then `Tags: [launch]` and `Displays helpful stuff`. `result.txt` is `help_list=true`. `game.strace`, from `strace -f -p 15` (`game.strace.err`: process 15 attached; thread 164 detached), has one fd-0 read and no 1024-count read: `164   04:34:15.762645 read(0, "help\n", 4096) = 5`. `maps.txt` has `libkernel32-shim.so` in the game. `inspect-before.txt` and `inspect-after.txt` both show `stationeers` exited `2026-10-22T11:39:53.851256288Z`. Recorded settings use the literal `redacted`. Cleanup in `cleanup.txt` removed `stn-s9-rev2`, `stn-s9-chown`, volume `stn-s9-vol`, and tag `stn-s9-cache:local`.
 
 ---
 

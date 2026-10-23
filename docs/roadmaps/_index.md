@@ -2,7 +2,7 @@
 
 ## Ready
 
-- `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — Executable; S1 through S6 approved; S9 in progress (stdin byte cache). S7 waits on S9, then S8.
+- `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — Executable; S1 through S6 and S9 approved. S7 re-runs live acceptance, then S8.
 
 ## Not Ready
 
@@ -14,7 +14,7 @@ None.
 
 ## Claimed-by
 
-- `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — execute-all-roadmaps orchestrator (2026-10-23). S9 is the stdin byte cache chosen by the user.
+- `2610230021_STATIONEERS_CONSOLE_SHIM_ROADMAP.md` — execute-all-roadmaps orchestrator (2026-10-23). S9 is approved. S7 re-runs live acceptance.
 
 ## Human actions needed
 
