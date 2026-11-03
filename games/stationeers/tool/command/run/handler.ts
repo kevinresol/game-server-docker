@@ -11,6 +11,7 @@ const SHIM_LIBRARY = "/home/steam/shim/libkernel32-shim.so";
 type Args = {
 	binPath: string;
 	logFile?: string;
+	preShutdown?: string;
 };
 
 // Prepend the shim unless it is already one of the colon-separated paths.
@@ -23,8 +24,9 @@ function ldPreloadForChild(existing: string | undefined): string {
 }
 
 export default async function ({
-	args: { binPath, logFile, "--": forwarded },
+	args: { binPath, logFile, preShutdown, "--": forwarded },
 }: HandlerInput<Args>) {
+	void preShutdown;
 	const gameArgs = [...(forwarded ?? [])];
 	if (gameArgs.some((arg) => arg.toLowerCase() === "-logfile")) {
 		throw new Error(

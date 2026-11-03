@@ -31,6 +31,8 @@ function configureRunCommand(base: typeof baseCommand) {
 				'Run the game. Any arguments after "--" will be forwarded to the server executable. ' +
 				"Commands written to stdin are delivered to the server console. " +
 				"When --log-file is set, that same console output is also appended to the file. " +
+				"On SIGTERM or SIGINT the runner writes quit to the server console; " +
+				"optionally set --pre-shutdown to run a shell command first. " +
 				"Use --rcon to enable Source RCON; a bare --rcon listens on port 27500.",
 		})
 		.option(
@@ -38,6 +40,14 @@ function configureRunCommand(base: typeof baseCommand) {
 			o.string({
 				description: "Append a copy of the server console output to this file.",
 				fallback: () => process.env.GAME_LOG_FILE,
+			}),
+		)
+		.option(
+			"pre-shutdown",
+			o.string({
+				description:
+					"Shell command to run on SIGTERM or SIGINT before writing quit to the server console.",
+				fallback: () => process.env.GAME_PRE_SHUTDOWN,
 			}),
 		)
 		.option("rcon", rconOption);

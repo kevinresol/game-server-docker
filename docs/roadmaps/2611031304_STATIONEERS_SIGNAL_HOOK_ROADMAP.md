@@ -120,7 +120,7 @@ Drafts are not execute-ready until the user explicitly approves Executable. Lock
 
 ### T1 — Expose `--pre-shutdown` on the run command
 
-**Status:** pending
+**Status:** done
 
 **Depends on:** R2 of `2610232219_STATIONEERS_RCON_ROADMAP.md` approved (or merged CLI work with R2—do not edit `command.ts` in parallel with R2)
 
@@ -128,9 +128,9 @@ Drafts are not execute-ready until the user explicitly approves Executable. Lock
 
 #### Implementor checklist
 
-- [ ] Add `--pre-shutdown` option with `GAME_PRE_SHUTDOWN` fallback, matching `@why-ts/cli` patterns used by `--log-file`.
-- [ ] Plumb the value into the run handler input type; no signal behavior change yet beyond passing the option through.
-- [ ] Fix `run` meta description so it no longer claims unimplemented autosave-on-SIGINT behavior; mention optional pre-shutdown hook at a high level.
+- [x] Add `--pre-shutdown` option with `GAME_PRE_SHUTDOWN` fallback, matching `@why-ts/cli` patterns used by `--log-file`.
+- [x] Plumb the value into the run handler input type; no signal behavior change yet beyond passing the option through.
+- [x] Fix `run` meta description so it no longer claims unimplemented autosave-on-SIGINT behavior; mention optional pre-shutdown hook at a high level.
 
 #### Reviewer checklist
 
@@ -140,6 +140,8 @@ Drafts are not execute-ready until the user explicitly approves Executable. Lock
 #### Agent log
 
 <!-- implementor / reviewer append below -->
+
+**Implementor — T1 — 2026-11-03.** Added `--pre-shutdown` / `GAME_PRE_SHUTDOWN` on `run` (same fallback pattern as `--log-file`). Extended handler `Args` with `preShutdown` and `void` wiring only; no signal/hook behavior. Updated `run` meta: SIGTERM/SIGINT → console `quit`, optional pre-shutdown mention (no autosave claims). Verify: esbuild OK, `git diff --check` OK; `tsc` blocked by untracked WIP `rcon/server.ts` syntax error (out of T1 scope).
 
 ---
 
