@@ -575,13 +575,13 @@ Implementor, 2026-11-03. Added `readServerAuthSecret` / `resolveSettingXmlPath` 
 
 #### Implementor checklist
 
-- [ ] In the Run Server example, add an optional TCP publish and an optional `--rcon=27500`, using square brackets. Keep the existing game ports and the `MarsBase Mars2 Normal` example.
-- [ ] State that `--rcon` alone uses port 27500, that the protocol is Source RCON, and that the password is `ServerAuthSecret` from `setting.xml` in the dedicated-server install directory, not a separate RCON password.
-- [ ] State that `-settings ServerAuthSecret change-this-secret` is what the game writes into that file, and that `-settingspath` points the file elsewhere.
-- [ ] State that the RCON reply is the console text up to the idle prompt, and that lines printed after the console is idle again are not part of that reply.
-- [ ] State that default `docker stop` grace is unchanged for RCON-only setups. If operators use `--pre-shutdown`, point them at the companion README section for `--stop-timeout` / hook duration (do not duplicate the full hook doc here).
-- [ ] Do not document HTTP `/console/run`, and do not put the secret in a sample log line.
-- [ ] Mention that optional `--pre-shutdown` (companion roadmap) can run a script before the same console `quit` shutdown; RCON and the hook are independent features that share one console stdin writer.
+- [x] In the Run Server example, add an optional TCP publish and an optional `--rcon=27500`, using square brackets. Keep the existing game ports and the `MarsBase Mars2 Normal` example.
+- [x] State that `--rcon` alone uses port 27500, that the protocol is Source RCON, and that the password is `ServerAuthSecret` from `setting.xml` in the dedicated-server install directory, not a separate RCON password.
+- [x] State that `-settings ServerAuthSecret change-this-secret` is what the game writes into that file, and that `-settingspath` points the file elsewhere.
+- [x] State that the RCON reply is the console text up to the idle prompt, and that lines printed after the console is idle again are not part of that reply.
+- [x] State that default `docker stop` grace is unchanged for RCON-only setups. If operators use `--pre-shutdown`, point them at the companion README section for `--stop-timeout` / hook duration (do not duplicate the full hook doc here).
+- [x] Do not document HTTP `/console/run`, and do not put the secret in a sample log line.
+- [x] Mention that optional `--pre-shutdown` (companion roadmap) can run a script before the same console `quit` shutdown; RCON and the hook are independent features that share one console stdin writer.
 
 #### Reviewer checklist
 
@@ -592,3 +592,5 @@ Implementor, 2026-11-03. Added `readServerAuthSecret` / `resolveSettingXmlPath` 
 #### Agent log
 
 <!-- implementor / reviewer append below -->
+
+- **Coder (R10):** Run Server example adds optional `-p 27500:27500/tcp` and `--rcon=27500`; new **Source RCON** section (port, protocol, `setting.xml` / `-settingspath`, reply framing, pre-shutdown pointer, no HTTP). Verify: `git diff --check`.
