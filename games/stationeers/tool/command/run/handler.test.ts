@@ -8,6 +8,13 @@ import { PassThrough, Readable } from "node:stream";
 import { describe, test } from "node:test";
 import { RCON_DEFAULT_PORT } from "./command";
 import handler from "./handler";
+import {
+	decodePackets,
+	encodePacket,
+	SERVERDATA_AUTH,
+	SERVERDATA_EXECCOMMAND,
+	SERVERDATA_RESPONSE_VALUE,
+} from "./rcon/protocol";
 
 // C2 rule: identical bytes. Helper stdout is written to process.stdout and, when
 // --log-file is set, appended to that file with no CR or escape-sequence stripping.
@@ -20,6 +27,70 @@ const PAYLOAD = Buffer.concat([
 	Buffer.from("still-here\r\nTAIL\n", "utf8"),
 ]);
 const DIAGNOSTIC = Buffer.from("pty-stderr");
+const RCON_TEST_SECRET = "handler-rcon-test-secret";
+
+function writeSettingXml(binPath: string, secret: string): void {
+	fs.writeFileSync(
+		path.join(binPath, "setting.xml"),
+		`<?xml version="1.0" encoding="utf-8"?><SettingData><ServerAuthSecret>${secret}</ServerAuthSecret></SettingData>`,
+	);
+}
+
+async function collectRconIdle(socket: net.Socket, idleMs = 400): Promise<Buffer> {
+	return new Promise((resolve, reject) => {
+		const chunks: Buffer[] = [];
+		let idleTimer: ReturnType<typeof setTimeout> | undefined;
+		const hardTimer = setTimeout(() => {
+			cleanup();
+			socket.destroy();
+			reject(new Error("timed out collecting RCON packets"));
+		}, 8000);
+		const onData = (chunk: Buffer): void => {
+			chunks.push(chunk);
+			bumpIdle();
+		};
+		const onError = (err: Error): void => {
+			cleanup();
+			reject(err);
+		};
+		const cleanup = (): void => {
+			clearTimeout(hardTimer);
+			if (idleTimer !== undefined) clearTimeout(idleTimer);
+			socket.off("data", onData);
+			socket.off("error", onError);
+		};
+		const finish = (): void => {
+			cleanup();
+			resolve(Buffer.concat(chunks));
+		};
+		const bumpIdle = (): void => {
+			if (idleTimer !== undefined) clearTimeout(idleTimer);
+			if (chunks.length === 0) return;
+			idleTimer = setTimeout(finish, idleMs);
+		};
+		socket.on("data", onData);
+		socket.on("error", onError);
+	});
+}
+
+async function rconExec(
+	port: number,
+	secret: string,
+	command: string,
+): Promise<string> {
+	const socket = await tcpConnect(port);
+	try {
+		socket.write(encodePacket(11, SERVERDATA_AUTH, secret));
+		await collectRconIdle(socket);
+		socket.write(encodePacket(22, SERVERDATA_EXECCOMMAND, command));
+		const execBytes = await collectRconIdle(socket, 900);
+		const { packets } = decodePackets(execBytes);
+		const responses = packets.filter((p) => p.type === SERVERDATA_RESPONSE_VALUE);
+		return responses.map((p) => p.body).join("");
+	} finally {
+		socket.destroy();
+	}
+}
 
 type Report = {
 	argv: string[];
@@ -243,16 +314,29 @@ function startRun(options: {
 	args?: string[];
 	rcon?: string;
 	useLogFile?: boolean;
-	mode: "exit" | "output" | "output-wait" | "output-split" | "wait" | "signal" | "stdin";
+	mode:
+		| "exit"
+		| "output"
+		| "output-wait"
+		| "output-split"
+		| "wait"
+		| "signal"
+		| "stdin"
+		| "rcon-console";
 	exitCode?: number;
 	payload?: Buffer;
 	cut?: number;
 	ldPreload?: string;
+	rconSecret?: string;
+	rconReplyGate?: string;
 	acceptStdout?: (chunk: Buffer, index: number) => boolean;
 }): Started {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stn-s5-"));
 	const binPath = path.join(dir, "game");
 	fs.mkdirSync(binPath);
+	if (options.rconSecret) {
+		writeSettingXml(binPath, options.rconSecret);
+	}
 	const gamePath = path.join(binPath, "rocketstation_DedicatedServer.x86_64");
 	const helperPath = path.join(dir, "stn-pty");
 	const reportPath = path.join(dir, "report.json");
@@ -308,6 +392,41 @@ if (mode === "output" || mode === "output-wait" || mode === "output-split") {
       process.exit(0);
     }
   }, 15);
+} else if (mode === "rcon-console") {
+  let seen = Buffer.alloc(0);
+  let helpReplyStarted = false;
+  function maybeReplyHelp() {
+    if (helpReplyStarted) return;
+    if (!seen.includes(Buffer.from("help\\n"))) return;
+    helpReplyStarted = true;
+    const go = () => {
+      process.stdout.write("help\\r\\n");
+      process.stdout.write("\\x1b[5;1H> ");
+      process.stdout.write("\\x1b[2K");
+      process.stdout.write("\\x1b[5;1H");
+      process.stdout.write("Tags: [launch]\\r\\n");
+      process.stdout.write("\\x1b[6;1H> ");
+    };
+    const gate = process.env.STN_FAKE_RCON_REPLY;
+    if (gate && !fs.existsSync(gate)) {
+      const timer = setInterval(() => {
+        if (fs.existsSync(gate)) {
+          clearInterval(timer);
+          go();
+        }
+      }, 15);
+    } else {
+      go();
+    }
+  }
+  process.stdin.on("data", (chunk) => {
+    seen = Buffer.concat([seen, Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)]);
+    fs.writeFileSync(process.env.STN_FAKE_STDIN, seen);
+    maybeReplyHelp();
+    if (seen.includes(Buffer.from("quit\\n"))) process.exit(0);
+  });
+  fs.writeFileSync(process.env.STN_FAKE_READY, "ready");
+  setInterval(() => {}, 1000);
 } else if (mode === "signal" || mode === "stdin") {
   process.on("SIGINT", () => {
     fs.writeFileSync(process.env.STN_FAKE_GAME_SIGNAL, "SIGINT");
@@ -395,6 +514,7 @@ child.on("close", (code) => process.exit(code === null ? 1 : code));
 	assignEnv("STN_FAKE_EXIT_FILE", exitPath);
 	assignEnv("STN_EXPECT_STDIN_DEV", stdin.dev);
 	assignEnv("STN_EXPECT_STDIN_INO", stdin.ino);
+	assignEnv("STN_FAKE_RCON_REPLY", options.rconReplyGate);
 	assignEnv("LD_PRELOAD", options.ldPreload);
 
 	const piped = tapStdioPipes(options.acceptStdout);
@@ -979,6 +1099,108 @@ describe("stationeers run handler", { concurrency: false }, () => {
 			if (previousReport === undefined) delete process.env.STN_FAKE_REPORT;
 			else process.env.STN_FAKE_REPORT = previousReport;
 			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	test("C6 — partial stdin and RCON help stay on separate lines", async () => {
+		const input = new PassThrough();
+		const restoreStdin = swapStdin(input);
+		const run = startRun({
+			mode: "rcon-console",
+			rcon: "",
+			rconSecret: RCON_TEST_SECRET,
+		});
+		try {
+			await waitFor(() => fs.existsSync(run.readyPath), "helper readiness");
+			const socket = await tcpConnect(RCON_DEFAULT_PORT);
+			try {
+				socket.write(encodePacket(11, SERVERDATA_AUTH, RCON_TEST_SECRET));
+				await collectRconIdle(socket);
+				input.write("save");
+				await waitFor(() => {
+					try {
+						const text = fs.readFileSync(run.stdinPath, "utf8");
+						return text.includes("save") && !text.includes("help");
+					} catch {
+						return false;
+					}
+				}, "partial stdin without RCON line");
+				socket.write(encodePacket(22, SERVERDATA_EXECCOMMAND, "help"));
+				const execBytesPromise = collectRconIdle(socket, 1200);
+				input.write("\n");
+				await waitFor(() => {
+					try {
+						const text = fs.readFileSync(run.stdinPath, "utf8");
+						return text.includes("save\n") && text.includes("help\n");
+					} catch {
+						return false;
+					}
+				}, "save line then RCON help on console stdin");
+				const execBytes = await execBytesPromise;
+				const { packets } = decodePackets(execBytes);
+				const body = packets
+					.filter((p) => p.type === SERVERDATA_RESPONSE_VALUE)
+					.map((p) => p.body)
+					.join("");
+				assert.equal(body, "Tags: [launch]");
+				const stdinBytes = fs.readFileSync(run.stdinPath, "utf8");
+				assert.equal(stdinBytes.includes("save\n"), true);
+				assert.equal(stdinBytes.includes("help\n"), true);
+				assert.equal(stdinBytes.includes("savehelp"), false);
+				assert.match(stdinBytes, /save\n[\s\S]*help\n/);
+			} finally {
+				socket.destroy();
+			}
+			input.write("quit\n");
+			await run.result;
+		} finally {
+			restoreStdin();
+			await run.cleanup();
+		}
+	});
+
+	test("D6 — SIGINT during in-flight RCON writes help then quit on separate lines", async () => {
+		const replyGate = path.join(os.tmpdir(), `stn-r9-d6-${process.pid}-${Date.now()}`);
+		const runnerInt = process.listeners("SIGINT").slice();
+		const run = startRun({
+			mode: "rcon-console",
+			rcon: "",
+			rconSecret: RCON_TEST_SECRET,
+			rconReplyGate: replyGate,
+		});
+		try {
+			await waitFor(() => fs.existsSync(run.readyPath), "helper readiness");
+			const execPromise = rconExec(RCON_DEFAULT_PORT, RCON_TEST_SECRET, "help");
+			await waitFor(() => {
+				try {
+					return fs.readFileSync(run.stdinPath, "utf8").includes("help\n");
+				} catch {
+					return false;
+				}
+			}, "RCON help line on console stdin");
+			for (const listener of runnerInt) process.removeListener("SIGINT", listener);
+			process.kill(process.pid, "SIGINT");
+			fs.writeFileSync(replyGate, "go");
+			await execPromise;
+			await run.result;
+			const stdinBytes = fs.readFileSync(run.stdinPath, "utf8");
+			const helpAt = stdinBytes.indexOf("help\n");
+			const quitAt = stdinBytes.indexOf("quit\n");
+			assert.ok(helpAt >= 0);
+			assert.ok(quitAt > helpAt);
+			assert.equal(stdinBytes.includes("helpquit"), false);
+			assert.equal(fs.existsSync(run.signalPath), false);
+			assert.equal(fs.existsSync(run.gameSignalPath), false);
+		} finally {
+			for (const listener of runnerInt) {
+				if (!process.listeners("SIGINT").includes(listener)) process.on("SIGINT", listener);
+			}
+			try {
+				fs.unlinkSync(replyGate);
+			} catch {
+				// already removed
+			}
+			await run.cleanup();
 		}
 	});
 

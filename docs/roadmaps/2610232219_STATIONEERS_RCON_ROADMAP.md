@@ -537,7 +537,7 @@ Implementor, 2026-11-03. Added `readServerAuthSecret` / `resolveSettingXmlPath` 
 
 ### R9 — Keep stdin, RCON, and quit on separate lines
 
-**Status:** pending
+**Status:** approved
 
 **Depends on:** R8
 
@@ -545,10 +545,10 @@ Implementor, 2026-11-03. Added `readServerAuthSecret` / `resolveSettingXmlPath` 
 
 #### Implementor checklist
 
-- [ ] Track partial stdin lines already forwarded. Hold the parent stdin pipe while an RCON line is submitted through the R7 exchange. The child still receives the partial stdin line intact, then `help\n`, as two lines (C6).
-- [ ] SIGINT or SIGTERM during an RCON submit writes `quit\n` as its own line after the in-flight RCON line (D6). Do not signal the child, and do not splice `quit` into `help`.
-- [ ] Refactor signal handlers to call one shared async shutdown function (single-flight) that performs the D6 ordering and ends with `quit\n`. Export or test-hook that function so `2611031304_STATIONEERS_SIGNAL_HOOK_ROADMAP.md` T2 can wrap it after an optional pre-shutdown phase without duplicating RCON stdin holds.
-- [ ] Extend `handler.test.ts` for C6 and D6 with the existing fake `stn-pty`.
+- [x] Track partial stdin lines already forwarded. Hold the parent stdin pipe while an RCON line is submitted through the R7 exchange. The child still receives the partial stdin line intact, then `help\n`, as two lines (C6).
+- [x] SIGINT or SIGTERM during an RCON submit writes `quit\n` as its own line after the in-flight RCON line (D6). Do not signal the child, and do not splice `quit` into `help`.
+- [x] Refactor signal handlers to call one shared async shutdown function (single-flight) that performs the D6 ordering and ends with `quit\n`. Export or test-hook that function so `2611031304_STATIONEERS_SIGNAL_HOOK_ROADMAP.md` T2 can wrap it after an optional pre-shutdown phase without duplicating RCON stdin holds.
+- [x] Extend `handler.test.ts` for C6 and D6 with the existing fake `stn-pty`.
 
 #### Reviewer checklist
 
@@ -560,6 +560,8 @@ Implementor, 2026-11-03. Added `readServerAuthSecret` / `resolveSettingXmlPath` 
 #### Agent log
 
 <!-- implementor / reviewer append below -->
+
+- **Coder (R9):** Parent stdin bridge (line-boundary wait + hold during RCON), exported `createConsoleQuitShutdown` with in-flight RCON wait before `quit\n`, handler tests C6/D6 (`rcon-console` fake). Verify: 92 `tsx --test` under `games/stationeers/tool`, `entrypoint_rcon_test.sh`, `tsc`, esbuild, `git diff --check`.
 
 ---
 

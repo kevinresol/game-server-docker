@@ -2,7 +2,7 @@ import { HandlerInput } from "@why-ts/cli";
 import { spawn } from "node:child_process";
 import { appendFile } from "node:fs/promises";
 import fs from "node:fs";
-import { Readable } from "node:stream";
+import { Readable, type Writable } from "node:stream";
 import { RCON_DEFAULT_PORT, validateRconOptionValue } from "./command";
 import { createConsoleExchange } from "./rcon/exchange";
 import { createRconServer, type RconServerHandle } from "./rcon/server";
@@ -17,6 +17,13 @@ type Args = {
 	logFile?: string;
 	preShutdown?: string;
 	rcon?: string;
+};
+
+type ParentStdinBridge = {
+	waitForLineBoundary: () => Promise<void>;
+	hold: () => void;
+	release: () => void;
+	dispose: () => void;
 };
 
 function resolveRconPort(rcon: string | undefined): number | undefined {
@@ -74,6 +81,8 @@ export default async function ({
 
 	let rconServer: RconServerHandle | undefined;
 	let consoleExchange: ReturnType<typeof createConsoleExchange> | undefined;
+	let stdinBridge: ParentStdinBridge | undefined;
+	let rconInflight: Promise<string> | undefined;
 	if (rconPort !== undefined) {
 		const readSecret = () => readSecretForRcon(binPath, gameArgs);
 		try {
@@ -81,10 +90,25 @@ export default async function ({
 				port: rconPort,
 				readSecret,
 				execute: (body) => {
-					if (!consoleExchange) {
+					if (!consoleExchange || !stdinBridge) {
 						throw new Error("RCON console exchange is not ready");
 					}
-					return consoleExchange.submit(body);
+					const bridge = stdinBridge;
+					const exchange = consoleExchange;
+					const run = (async () => {
+						await bridge.waitForLineBoundary();
+						bridge.hold();
+						try {
+							return await exchange.submit(body);
+						} finally {
+							bridge.release();
+						}
+					})();
+					rconInflight = run;
+					void run.finally(() => {
+						if (rconInflight === run) rconInflight = undefined;
+					});
+					return run;
 				},
 			});
 		} catch (error) {
@@ -115,29 +139,41 @@ export default async function ({
 	// The dedicated server exits on the console command. Signaling stn-pty would
 	// deliver SIGINT to the game instead, so these handlers only write "quit".
 	// Parent stdin stays open after EOF so a later quit can still be written.
-	// Keep this stream object: close must unpipe the same one the handler piped.
 	const parentIn = process.stdin;
 	childIn.on("error", onChildStdinError);
-	parentIn.pipe(childIn, { end: false });
+	stdinBridge =
+		rconPort !== undefined ? createParentStdinBridge(parentIn, childIn) : undefined;
+	if (!stdinBridge) {
+		parentIn.pipe(childIn, { end: false });
+	}
 	if (typeof parentIn.unref === "function") parentIn.unref();
-	const sendQuit = () => {
+
+	const writeConsoleLine = (lineWithNewline: string): void => {
 		if (childIn.destroyed || childIn.writableEnded) return;
-		childIn.write("quit\n", (error) => {
+		childIn.write(lineWithNewline, (error) => {
 			if (error) onChildStdinError(error);
 		});
 	};
-	process.on("SIGTERM", sendQuit);
-	process.on("SIGINT", sendQuit);
+
+	const waitForRconIdle = async (): Promise<void> => {
+		if (rconInflight) await rconInflight;
+	};
+
+	const beginShutdown = createConsoleQuitShutdown({
+		waitBeforeQuit: waitForRconIdle,
+		writeQuitLine: () => writeConsoleLine("quit\n"),
+	});
+	process.on("SIGTERM", () => {
+		void beginShutdown();
+	});
+	process.on("SIGINT", () => {
+		void beginShutdown();
+	});
 
 	if (rconServer) {
 		consoleExchange = createConsoleExchange({
 			stdout: childOut,
-			write: (lineWithNewline) => {
-				if (childIn.destroyed || childIn.writableEnded) return;
-				childIn.write(lineWithNewline, (error) => {
-					if (error) onChildStdinError(error);
-				});
-			},
+			write: writeConsoleLine,
 		});
 	}
 
@@ -155,8 +191,12 @@ export default async function ({
 		// "close" fires after stdout/stderr have ended, so the last bytes are
 		// in the tee file before it is deleted. "exit" can run earlier.
 		proc.on("close", (code) => {
-			parentIn.unpipe(childIn);
-			parentIn.pause();
+			if (stdinBridge) {
+				stdinBridge.dispose();
+			} else {
+				parentIn.unpipe(childIn);
+				parentIn.pause();
+			}
 			playerLog.stop();
 			const rconClose = rconServer?.close().catch((error) => {
 				console.error(`Failed to close RCON server: ${error}`);
@@ -185,6 +225,83 @@ function onChildStdinError(error: Error | null | undefined): void {
 	const code = (error as NodeJS.ErrnoException).code;
 	if (code === "EPIPE" || code === "ERR_STREAM_DESTROYED") return;
 	console.error(`Failed to write server stdin: ${error}`);
+}
+
+/** Single-flight console shutdown (quit line). T2 wraps this after an optional pre-shutdown hook. */
+export function createConsoleQuitShutdown(options: {
+	waitBeforeQuit: () => Promise<void>;
+	writeQuitLine: () => void;
+}): () => Promise<void> {
+	let flight: Promise<void> | undefined;
+	return () => {
+		if (!flight) {
+			flight = options.waitBeforeQuit().then(() => {
+				options.writeQuitLine();
+			});
+		}
+		return flight;
+	};
+}
+
+function createParentStdinBridge(parentIn: NodeJS.ReadableStream, childIn: Writable): ParentStdinBridge {
+	let partialLine = false;
+	let held = false;
+	const lineBoundaryWaiters: Array<() => void> = [];
+
+	const notifyLineBoundary = (): void => {
+		if (partialLine) return;
+		const waiters = lineBoundaryWaiters.splice(0);
+		for (const resolve of waiters) resolve();
+	};
+
+	const noteForwardedBytes = (chunk: Buffer): void => {
+		for (let i = 0; i < chunk.length; i++) {
+			const byte = chunk[i];
+			if (byte === 0x0a) {
+				partialLine = false;
+			} else if (byte !== 0x0d) {
+				partialLine = true;
+			}
+		}
+		notifyLineBoundary();
+	};
+
+	const onParentData = (chunk: Buffer | string): void => {
+		if (held) return;
+		const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+		noteForwardedBytes(buf);
+		if (childIn.destroyed || childIn.writableEnded) return;
+		childIn.write(buf, (error) => {
+			if (error) onChildStdinError(error);
+		});
+	};
+
+	parentIn.on("data", onParentData);
+	parentIn.on("end", () => {
+		// Parent EOF must not close the server console; quit may follow.
+	});
+	if (typeof parentIn.resume === "function") parentIn.resume();
+
+	return {
+		waitForLineBoundary(): Promise<void> {
+			if (!partialLine) return Promise.resolve();
+			return new Promise((resolve) => {
+				lineBoundaryWaiters.push(resolve);
+			});
+		},
+		hold(): void {
+			held = true;
+			if (typeof parentIn.pause === "function") parentIn.pause();
+		},
+		release(): void {
+			held = false;
+			if (typeof parentIn.resume === "function") parentIn.resume();
+		},
+		dispose(): void {
+			parentIn.off("data", onParentData);
+			if (typeof parentIn.pause === "function") parentIn.pause();
+		},
+	};
 }
 
 // Helper stdout is written only through process.stdout.write. The log file is
