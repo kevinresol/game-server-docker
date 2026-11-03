@@ -351,7 +351,7 @@ Drafts are not execute-ready until the user explicitly approves Executable. Revi
 
 ### R3 — Read `ServerAuthSecret` from `setting.xml`
 
-**Status:** pending
+**Status:** implemented (awaiting review)
 
 **Depends on:** none
 
@@ -372,7 +372,7 @@ Drafts are not execute-ready until the user explicitly approves Executable. Revi
 
 #### Agent log
 
-<!-- implementor / reviewer append below -->
+Implementor, 2026-11-03. Added `readServerAuthSecret` / `resolveSettingXmlPath` with injectable `readFile`, install-root default, `-settingspath` override (B7/B7b), hand-rolled `SettingData` / `ServerAuthSecret` parse, entity decoding, distinct fail-closed reasons, no secret logging or caching. Commit `2877cc1`. Verification: `pnpm exec tsx --test games/stationeers/tool/command/run/rcon/secret.test.ts` (17 pass), `pnpm exec tsc --noEmit --pretty false`, `pnpm exec esbuild games/stationeers/tool/main.ts --bundle --platform=node --outfile=/tmp/stationeers-tool.js`, `git diff --check`.
 
 ---
 
@@ -400,7 +400,7 @@ Drafts are not execute-ready until the user explicitly approves Executable. Revi
 
 <!-- implementor / reviewer append below -->
 
-**Implementor — R4 — 2026-11-03.** Added `protocol.ts` (encode/decode, split response bodies, strip nulls, `isEmptyResponseValueMarker`) and `protocol.test.ts` (16 tests: auth/exec/response/auth-response/id -1/split/end marker/truncated buffer). No imports from secret, framer, or handler. Verify: `pnpm exec tsx --test games/stationeers/tool/command/run/rcon/protocol.test.ts` (16 pass), `pnpm exec tsc --noEmit --pretty false`, `pnpm exec esbuild games/stationeers/tool/main.ts --bundle --platform=node --outfile=/tmp/stationeers-tool.js`, `git diff --check`.
+**Implementor — R4 — 2026-11-03.** Added `protocol.ts` (encode/decode, split response bodies, strip nulls, `isEmptyResponseValueMarker`) and `protocol.test.ts` (16 tests: auth/exec/response/auth-response/id -1/split/end marker/truncated buffer). No imports from secret, framer, or handler. Verify: `pnpm exec tsx --test games/stationeers/tool/command/run/rcon/protocol.test.ts` (16 pass), `pnpm exec tsc --noEmit --pretty false`, `pnpm exec esbuild games/stationeers/tool/main.ts --bundle --platform=node --outfile=/tmp/stationeers-tool.js`, `git diff --check`. Commit `c763c80`.
 
 ---
 
