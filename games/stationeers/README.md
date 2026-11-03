@@ -8,6 +8,7 @@ docker run -d \
   -p 27016:27016/udp -p 27015:27015/udp \
   [-p 27500:27500/tcp] \
   [-e GAME_LOG_FILE=/home/steam/stationeers.log] \
+  [-e GAME_PRE_SHUTDOWN=/data/pre-shutdown.sh] \
   kevinresol/stationeers-dedicated-server:latest \
   [--rcon=27500] \
   [-file start MarsBase Mars2 Normal] \
@@ -61,6 +62,33 @@ Each authenticated command is one line on the server console. The RCON response 
 RCON shares the same console stdin writer as container stdin. The optional `--pre-shutdown` hook (`GAME_PRE_SHUTDOWN`) is independent: when set, the helper can run a shell command on SIGTERM or SIGINT before it writes the same console `quit` line used without the hook. RCON and the hook do not require each other. Enabling RCON does not add HTTP access or a `/console/run` endpoint.
 
 With RCON only and no pre-shutdown hook, `docker stop` grace is unchanged from the guidance above: allow at least 15 seconds (for example `docker stop -t 15`). If you enable `--pre-shutdown`, set Docker `--stop-timeout` or Compose `stop_grace_period` using the **Pre-shutdown hook** section below so the hook and console `quit` can finish.
+
+## Pre-shutdown hook
+
+The helper can run a shell command on **SIGTERM** or **SIGINT** before it writes the same console `quit` line used when no hook is configured. Docker stop sends SIGTERM to the entrypoint, which forwards it to the Node runner; interactive `docker run -it` sends SIGINT on Ctrl+C. The first signal starts shutdown; a second signal during the same stop does not run the hook again. There is no built-in autosave or RCON-on-shutdown command—the hook is how you run custom logic (for example a save line) during an orderly stop. Source RCON (`--rcon`) is optional and documented above; it shares the console stdin writer but does not replace the hook.
+
+Set **`GAME_PRE_SHUTDOWN`** to the command string (for example `-e GAME_PRE_SHUTDOWN=/data/pre-shutdown.sh` on `docker run`, or the same key in Compose `environment`). The helper also accepts **`--pre-shutdown`** on the `run` command with the same meaning as `--log-file` / `GAME_LOG_FILE`: CLI wins when both are set; empty or unset disables the hook. Container arguments after the image name are forwarded to the game executable, so prefer the environment variable for Docker the same way as `GAME_LOG_FILE`.
+
+The command runs as **`/bin/sh -c`** with your string, so one-line commands and script paths both work. The hook child receives **`SIGNAL_NAME`** (`SIGTERM` or `SIGINT`) and **`SIGNAL_NUMBER`** (`15` or `2`) for the signal that started shutdown. Hook stdout and stderr stay on the container console. If the hook exits non-zero, fails to start, or is killed after a timeout, the helper logs to stderr and **still** writes `quit` to the server console afterward. The hook may run for at most **60 seconds**; after that the helper terminates the hook and continues shutdown.
+
+Whenever a pre-shutdown command is configured, the helper opens an extra pipe to the hook as file descriptor **3** and sets **`SERVER_STDIN_FD=3`**. During the hook phase only, bytes written to fd 3 are forwarded to the server console stdin (the same path as container stdin and RCON). There is no separate flag to enable this bridge—it is automatic whenever the hook is set. After the hook finishes or times out, forwarding stops and the helper writes `quit` (waiting first for any in-flight RCON command when `--rcon` is enabled).
+
+Example script on the `/data` volume:
+
+```sh
+#!/bin/sh
+printf 'save stop-hook\n' >&"${SERVER_STDIN_FD}"
+```
+
+Make the script executable (`chmod +x pre-shutdown.sh`) and point `GAME_PRE_SHUTDOWN` at `/data/pre-shutdown.sh`. A one-line hook without a file works too, for example `GAME_PRE_SHUTDOWN='printf "save stop-hook\n" >&3'`.
+
+Default Docker stop grace is often about 10 seconds, which is shorter than the 60 second hook bound plus time for the server to handle `quit`. When using a pre-shutdown hook, allow enough margin, for example:
+
+```sh
+docker stop -t 90 stationeers
+```
+
+In Docker Compose, set `stop_grace_period: 90s` on the service.
 
 ## Volumes
 

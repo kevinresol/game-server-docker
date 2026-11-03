@@ -209,7 +209,7 @@ Drafts are not execute-ready until the user explicitly approves Executable. Lock
 
 ### T4 — Document hook for Docker operators
 
-**Status:** pending
+**Status:** approved
 
 **Depends on:** T2 approved
 
@@ -217,10 +217,10 @@ Drafts are not execute-ready until the user explicitly approves Executable. Lock
 
 #### Implementor checklist
 
-- [ ] Document `--pre-shutdown` / `GAME_PRE_SHUTDOWN`, SIGTERM/SIGINT → hook → console `quit` flow, timeout/failure behavior, `SIGNAL_NAME` / `SIGNAL_NUMBER`, and **`SERVER_STDIN_FD=3`** with a concrete `printf … >&3` (or equivalent) example for game console lines. Note that Source RCON (`--rcon`) is documented separately and is not required for the hook.
-- [ ] Document Docker `--stop-timeout` / compose `stop_grace_period` relative to the 60s hook bound (concrete example, e.g. `--stop-timeout 90`).
-- [ ] Give a concrete example (e.g. shell script path under `/data`) per project README rules; use `[...]` for optional parts.
-- [ ] State that the fd-3 bridge is automatic whenever pre-shutdown is configured (no separate stdio flag).
+- [x] Document `--pre-shutdown` / `GAME_PRE_SHUTDOWN`, SIGTERM/SIGINT → hook → console `quit` flow, timeout/failure behavior, `SIGNAL_NAME` / `SIGNAL_NUMBER`, and **`SERVER_STDIN_FD=3`** with a concrete `printf … >&3` (or equivalent) example for game console lines. Note that Source RCON (`--rcon`) is documented separately and is not required for the hook.
+- [x] Document Docker `--stop-timeout` / compose `stop_grace_period` relative to the 60s hook bound (concrete example, e.g. `--stop-timeout 90`).
+- [x] Give a concrete example (e.g. shell script path under `/data`) per project README rules; use `[...]` for optional parts.
+- [x] State that the fd-3 bridge is automatic whenever pre-shutdown is configured (no separate stdio flag).
 
 #### Reviewer checklist
 
@@ -230,3 +230,5 @@ Drafts are not execute-ready until the user explicitly approves Executable. Lock
 #### Agent log
 
 <!-- implementor / reviewer append below -->
+
+**Implementor — T4 — 2026-11-03.** Added **Pre-shutdown hook** section (flow, env/CLI precedence, `sh -c`, signal env, fd 3 / `SERVER_STDIN_FD`, script under `/data`, `docker stop -t 90`, Compose `stop_grace_period`); Run Server example adds optional `GAME_PRE_SHUTDOWN`. Verify: `git diff --check`. Commit **`213aaee`**.
