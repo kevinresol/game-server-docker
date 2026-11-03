@@ -2,11 +2,11 @@
 
 ## Ready
 
-None.
+- `2610232219_STATIONEERS_RCON_ROADMAP.md` — **Executable**. Source RCON server in the Stationeers tool, bridged to the working console. Replaces the removed save-on-SIGINT roadmap.
 
 ## Not Ready
 
-- `2610112023_STATIONEERS_RCON_SAVE_ON_SIGINT_ROADMAP.md` — **parked** by the user in favor of the console shim roadmap (its HTTP RCON premise is contradicted by `stn-diag/20261022T113113Z/DECOMPILE.md`); T1 is not to be executed; not Executable until the user revives it
+None.
 
 ## Blocked
 
@@ -23,8 +23,8 @@ None.
 ## Dependency sketch
 
 - Game README consistency: complete (T1, then T2/T3/T4).
-- Stationeers RCON save (parked): T1 → user contract confirmation → T2 → T3/T4 in parallel. Shares `games/stationeers/tool/command/run/handler.ts` with the completed console shim: run it only after that shim, which is now complete.
-- Stationeers console shim: complete (S1–S9).
+- Stationeers console shim: complete (S1–S9). The new RCON roadmap edits `handler.ts` and `command.ts` only after that shim, which is done.
+- Stationeers RCON server: R1–R5 in parallel, then R6 after R4 and R7 after R5, then R8 after R2, R3, R6, and R7, then R9, then R10.
 
 ## Completes
 
