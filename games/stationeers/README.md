@@ -12,7 +12,7 @@ docker run -d \
   kevinresol/stationeers-dedicated-server:latest \
   [--rcon=27500] \
   [-file start MarsBase Mars2 Normal] \
-  [-settings StartLocalHost true ServerPassword change-this-password GamePort 27016] \
+  [-settings StartLocalHost true ServerVisible true LocalIpAddress 0.0.0.0 GamePort 27016 ServerName "Stationeers Server" ServerPassword change-this-password ServerAuthSecret change-this-rcon-secret ServerMaxPlayers 8 UPNPEnabled false SaveInterval 150 UseSteamP2P false] \
   [...]
 ```
 
@@ -33,7 +33,9 @@ With the console active, no clients, and the server idle, a 60s sample measured 
 
 ## Script Arguments
 
-Arguments after the image name are forwarded to the Stationeers server executable. The example shows common optional server arguments; omit any that you do not need. `-file start` takes positional arguments: a required save name, a world id that is required only when that station does not exist yet, and an optional difficulty that defaults to `Normal`. The first-run example is `MarsBase Mars2 Normal`. On a new volume, omitting the world id fails. `-settings` takes key and value pairs. `StartLocalHost true` in the example is an ordinary settings pair. This image runs the dedicated-server build, where hosting already happens because `IsBatchMode` is always true. `GamePort 27016` matches the published game port. Also publish UDP `27015`, which the dedicated server guide lists as the Steam update port.
+Arguments after the image name are forwarded to the Stationeers server executable. The example shows common optional server arguments; omit any that you do not need. `-file start` takes positional arguments: a required save name, a world id that is required only when that station does not exist yet, and an optional difficulty that defaults to `Normal`. The first-run example is `MarsBase Mars2 Normal`. On a new volume, omitting the world id fails. `-settings` takes key and value pairs. `StartLocalHost true`, `ServerVisible true`, and `LocalIpAddress 0.0.0.0` belong in the same `-settings` argument as the other pairs (do not repeat `-settings` for each group). `StartLocalHost true` in the example is an ordinary settings pair. This image runs the dedicated-server build, where hosting already happens because `IsBatchMode` is always true. `GamePort 27016` matches the published game port. Also publish UDP `27015`, which the dedicated server guide lists as the Steam update port; the game setting `UpdatePort` is unused in current builds—publishing `27015/udp` is still recommended for browser/query behavior.
+
+In Docker you must set **`UPNPEnabled false`** and **`UseSteamP2P false`** in the same `-settings` line. UPnP inside a container cannot configure the host router, and Steam P2P routing is wrong for a published dedicated port. Leaving either at the game default (`true`) often breaks LAN or direct joins even when ports are published.
 
 The wrapper adds `-noclear` unless the arguments already include `-noclear`.
 
