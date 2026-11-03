@@ -12,8 +12,8 @@ The idle prompt is the two characters `> ` at column 0, written with no trailing
 
 **Out of scope:**
 
-- Saving on SIGINT or SIGTERM, and any HTTP or `/console/run` client.
-- Changing today's signal behavior. SIGINT and SIGTERM still write `quit` to the console and do not signal the game process.
+- Built-in save-on-SIGINT or save-on-SIGTERM, and any HTTP or `/console/run` client.
+- Changing shutdown except as coordinated with `2611031304_STATIONEERS_SIGNAL_HOOK_ROADMAP.md` (optional `--pre-shutdown` before the same console `quit` path). Without that hook, SIGINT and SIGTERM still write `quit` to the console and do not signal the game process.
 - Changing `stn-pty`, `libkernel32-shim.so`, or how the game reads stdin.
 - A second RCON password, TLS, command allow-lists, command aliases, or pushing idle console output to a client that has no command in flight.
 - Moving `setting.xml` onto `/data`, or following a runtime `SavePath` change. The settings path is fixed on first load; a later save-directory change does not move the file.
@@ -29,8 +29,9 @@ The idle prompt is the two characters `> ` at column 0, written with no trailing
 - **Reply:** The exchange writes exactly the command body plus one `\n` (the same newline the existing `quit` write uses). The framer is told that submitted line and drops one echoed occurrence of it. Other lines are kept, including a payload line that happens to be printed first. The RCON body is the remaining console text with cursor-control and cursor-address bytes removed, and it does not include the `> ` prompt. The same raw bytes are still written to container stdout and to `--log-file` when that flag is set. They are not held back for the 300ms prompt timer. A prompt is `> ` at column 0. Terminal column 1 (`CSI <row>;1H`) is that column. A prompt is cleared when the cursor is addressed back to column 0 or a clear-line sequence overwrites that line before 300ms. A prompt counts as the end only after it has stayed for 300ms without being cleared. The echo prompt is cleared when real output starts (the console tick is 100ms), so it is not the end when output follows. If nothing clears the echo prompt for 300ms, the command printed nothing and the body is empty. Bytes that arrive after the chosen end, including `Created new save` about a second later, are not added to that body. After a timeout, bytes that belonged to the timed-out command are discarded before the next reply. Tests may drive the 300ms bound with a fake clock.
 - **One console:** Stdin and every RCON connection share one writer. The wrapper tracks whether the bytes it has already forwarded form a partial line. An RCON command waits until that stream is at a line boundary, then holds stdin, writes its own full line, and releases stdin only after the reply has ended. The partial stdin line is still delivered intact, as its own line, before that RCON line. Characters from stdin and from RCON never share a line. Overlapping RCON commands run one at a time. A body that contains CR or LF is not written. The client receives one response-value packet, type `0`, with the exec request id and body `command rejected`. An empty body writes nothing and returns one empty response-value packet with that id. SIGINT or SIGTERM during an RCON submit still writes a separate `quit\n` after the in-flight RCON line, not spliced into it, and does not signal the child.
 - **Stuck console:** If no end prompt arrives within 30s, the RCON body is `console reply timed out`. The exchange writes no further line until a prompt has stayed for 300ms. Further commands during that wait return the same error and write nothing. If the console stream ends first, the body is `console closed`.
-- **Signals:** SIGINT and SIGTERM stay on the existing `quit` write. Enabling RCON does not change them.
+- **Signals:** SIGINT and SIGTERM use one serialized shutdown path in `handler.ts`. With no `--pre-shutdown` hook, that path writes `quit\n` to the server console stdin only (never `proc.kill("SIGINT")` on the `stn-pty` child). Enabling RCON does not change that default. When a pre-shutdown hook is configured (companion roadmap), the hook runs first with the fd-3 stdin bridge; after the hook phase, the same path applies, including R9 rules for an in-flight RCON line before `quit\n`.
 - **Sessions:** The password is checked when a connection authenticates, not on every later command. A secret changed on disk applies to the next authentication. An already authenticated connection keeps its session.
+- **Companion roadmap:** `2611031304_STATIONEERS_SIGNAL_HOOK_ROADMAP.md` adds optional `--pre-shutdown` / `GAME_PRE_SHUTDOWN`. It does not replace Source RCON. Implement R9 before the signal hook handler chunk (T2). Do not merge `--pre-shutdown` behavior into R8; T2 extends the shutdown path R9 defines.
 
 ## Acceptance
 
@@ -263,7 +264,7 @@ Scenario D9 — Secret is read again
 **Pack:** four-pack
 
 - **architect:** true
-- **Chunk order:** R1, R2, R3, R4, and R5 touch disjoint files and may run in parallel. R6 depends on R4. R7 depends on R5. R8 depends on R2, R3, R6, and R7. R9 depends on R8 and edits the same handler files, so it cannot run beside R8. R10 depends on R9. Do not start a chunk until every chunk it depends on is approved.
+- **Chunk order:** R1, R2, R3, R4, and R5 touch disjoint files and may run in parallel. R6 depends on R4. R7 depends on R5. R8 depends on R2, R3, R6, and R7. R9 depends on R8 and edits the same handler files, so it cannot run beside R8. R10 depends on R9. The signal-hook roadmap’s handler work (T2) must not start until **R9 is approved**; its CLI chunk (T1) must not run beside **R2** (both edit `command.ts`). Do not start a chunk until every chunk it depends on is approved.
 - **Where code lives:** Stationeers tool only, under `games/stationeers/`. No other game image. No new package dependency.
 - **Review:** coder, then cleaner, then architect, then reviewer, for every chunk. Architect checks the Architecture lane. Reviewer approval does not grant Executable status.
 - **Verification:** From the repo root, run the chunk's `pnpm exec tsx --test` paths, then `pnpm exec tsc --noEmit --pretty false`, `pnpm exec esbuild games/stationeers/tool/main.ts --bundle --platform=node --outfile=/tmp/stationeers-tool.js`, and `git diff --check`. Shell checks for R1 are in that chunk. A live Stationeers server is not required. Do not log `ServerAuthSecret` while verifying.
@@ -276,7 +277,7 @@ Scenario D9 — Secret is read again
 - The TCP server authenticates through a `readSecret` function and calls an execute function that returns the reply string. It does not import the secret reader, see game arguments, spawn the game, or read stdout itself.
 - The console exchange owns "write one line, wait for the end prompt." It does not parse RCON packets or XML.
 - `handler.ts` is the only place that binds the listener, taps stdout, and writes an RCON line to the console stdin. `entrypoint.sh` only moves the flag to the tool side of `--`.
-- SIGINT and SIGTERM stay on the existing `quit` write in `handler.ts`.
+- SIGINT and SIGTERM use one shutdown entry point in `handler.ts` that writes `quit\n` when no hook is configured. R9 implements that entry point and RCON-aware ordering; the signal-hook roadmap extends it when `--pre-shutdown` is set.
 
 ---
 
@@ -524,13 +525,15 @@ Drafts are not execute-ready until the user explicitly approves Executable. Revi
 
 - [ ] Track partial stdin lines already forwarded. Hold the parent stdin pipe while an RCON line is submitted through the R7 exchange. The child still receives the partial stdin line intact, then `help\n`, as two lines (C6).
 - [ ] SIGINT or SIGTERM during an RCON submit writes `quit\n` as its own line after the in-flight RCON line (D6). Do not signal the child, and do not splice `quit` into `help`.
+- [ ] Refactor signal handlers to call one shared async shutdown function (single-flight) that performs the D6 ordering and ends with `quit\n`. Export or test-hook that function so `2611031304_STATIONEERS_SIGNAL_HOOK_ROADMAP.md` T2 can wrap it after an optional pre-shutdown phase without duplicating RCON stdin holds.
 - [ ] Extend `handler.test.ts` for C6 and D6 with the existing fake `stn-pty`.
 
 #### Reviewer checklist
 
 - [ ] The partial stdin bytes are present in the child input, not discarded.
 - [ ] SIGINT during an RCON submit does not call `kill` on the child.
-- [ ] This chunk does not edit `entrypoint.sh`, `command.ts`, or the R1–R7 modules except to import them.
+- [ ] Shutdown goes through console `quit\n`, not `proc.kill("SIGINT")`, matching today’s `handler.ts` comments for `stn-pty`.
+- [ ] This chunk does not edit `entrypoint.sh`, `command.ts`, or the R1–R7 modules except to import them. It does not implement `--pre-shutdown` (signal-hook T2).
 
 #### Agent log
 
@@ -552,8 +555,9 @@ Drafts are not execute-ready until the user explicitly approves Executable. Revi
 - [ ] State that `--rcon` alone uses port 27500, that the protocol is Source RCON, and that the password is `ServerAuthSecret` from `setting.xml` in the dedicated-server install directory, not a separate RCON password.
 - [ ] State that `-settings ServerAuthSecret change-this-secret` is what the game writes into that file, and that `-settingspath` points the file elsewhere.
 - [ ] State that the RCON reply is the console text up to the idle prompt, and that lines printed after the console is idle again are not part of that reply.
-- [ ] State that `docker stop -t 15` is unchanged.
+- [ ] State that default `docker stop` grace is unchanged for RCON-only setups. If operators use `--pre-shutdown`, point them at the companion README section for `--stop-timeout` / hook duration (do not duplicate the full hook doc here).
 - [ ] Do not document HTTP `/console/run`, and do not put the secret in a sample log line.
+- [ ] Mention that optional `--pre-shutdown` (companion roadmap) can run a script before the same console `quit` shutdown; RCON and the hook are independent features that share one console stdin writer.
 
 #### Reviewer checklist
 
