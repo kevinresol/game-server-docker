@@ -378,7 +378,7 @@ Drafts are not execute-ready until the user explicitly approves Executable. Revi
 
 ### R4 — Source RCON packets
 
-**Status:** pending
+**Status:** in_progress
 
 **Depends on:** none
 
@@ -386,9 +386,9 @@ Drafts are not execute-ready until the user explicitly approves Executable. Revi
 
 #### Implementor checklist
 
-- [ ] Encode and decode the packet layout in Decisions. Reject a packet whose size does not match its bytes, whose body is not null-terminated, or whose full length including the size field exceeds 4096 bytes (size field at most 4092).
-- [ ] Split an outgoing body so every full packet is at most 4096 bytes, and strip null bytes from the body before encoding.
-- [ ] Unit-test auth type `3`, exec type `2`, response-value type `0`, auth-response type `2`, id `-1`, a body split across packets, and the empty end-marker packet. Do not open a socket.
+- [x] Encode and decode the packet layout in Decisions. Reject a packet whose size does not match its bytes, whose body is not null-terminated, or whose full length including the size field exceeds 4096 bytes (size field at most 4092).
+- [x] Split an outgoing body so every full packet is at most 4096 bytes, and strip null bytes from the body before encoding.
+- [x] Unit-test auth type `3`, exec type `2`, response-value type `0`, auth-response type `2`, id `-1`, a body split across packets, and the empty end-marker packet. Do not open a socket.
 
 #### Reviewer checklist
 
@@ -399,6 +399,8 @@ Drafts are not execute-ready until the user explicitly approves Executable. Revi
 #### Agent log
 
 <!-- implementor / reviewer append below -->
+
+**Implementor — R4 — 2026-11-03.** Added `protocol.ts` (encode/decode, split response bodies, strip nulls, `isEmptyResponseValueMarker`) and `protocol.test.ts` (16 tests: auth/exec/response/auth-response/id -1/split/end marker/truncated buffer). No imports from secret, framer, or handler. Verify: `pnpm exec tsx --test games/stationeers/tool/command/run/rcon/protocol.test.ts` (16 pass), `pnpm exec tsc --noEmit --pretty false`, `pnpm exec esbuild games/stationeers/tool/main.ts --bundle --platform=node --outfile=/tmp/stationeers-tool.js`, `git diff --check`.
 
 ---
 
