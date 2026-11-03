@@ -312,6 +312,7 @@ function tapStdioPipes(acceptStdout?: (chunk: Buffer, index: number) => boolean)
 
 function startRun(options: {
 	args?: string[];
+	preShutdown?: string;
 	rcon?: string;
 	useLogFile?: boolean;
 	mode:
@@ -554,6 +555,7 @@ child.on("close", (code) => process.exit(code === null ? 1 : code));
 		args: {
 			binPath,
 			logFile,
+			preShutdown: options.preShutdown,
 			rcon: options.rcon,
 			"--": options.args ?? [],
 			_: [],
@@ -1241,4 +1243,114 @@ describe("stationeers run handler", { concurrency: false }, () => {
 			await run.cleanup();
 		}
 	});
+
+	test("pre-shutdown — fd 3 bridge line reaches game stdin before quit on SIGTERM", async () => {
+		const bridgeLine = "pre-shutdown-bridge\n";
+		const run = startRun({
+			mode: "rcon-console",
+			preShutdown: "printf 'pre-shutdown-bridge\\n' >&3",
+		});
+		try {
+			await waitFor(() => fs.existsSync(run.readyPath), "helper readiness");
+			process.kill(process.pid, "SIGTERM");
+			await run.result;
+			const stdinBytes = fs.readFileSync(run.stdinPath, "utf8");
+			const bridgeAt = stdinBytes.indexOf(bridgeLine);
+			const quitAt = stdinBytes.indexOf("quit\n");
+			assert.ok(bridgeAt >= 0, "hook fd 3 line missing from game stdin");
+			assert.ok(quitAt > bridgeAt, "quit must follow the hook bridge line");
+			assert.equal(fs.existsSync(run.signalPath), false);
+			assert.equal(fs.existsSync(run.gameSignalPath), false);
+		} finally {
+			await run.cleanup();
+		}
+	});
+
+	test("pre-shutdown — hook completes before quit on SIGINT without signaling helper or game", async () => {
+		const runnerInt = process.listeners("SIGINT").slice();
+		const hookWitness = path.join(os.tmpdir(), `stn-t3-hook-${process.pid}-${Date.now()}`);
+		const run = startRun({
+			mode: "signal",
+			preShutdown: `printf 'hook-witness' > '${hookWitness.replace(/'/g, "'\\''")}'`,
+		});
+		try {
+			await waitFor(() => fs.existsSync(run.readyPath), "helper readiness");
+			for (const listener of runnerInt) process.removeListener("SIGINT", listener);
+			process.kill(process.pid, "SIGINT");
+			await run.result;
+			assert.equal(fs.readFileSync(hookWitness, "utf8"), "hook-witness");
+			assert.equal(fs.readFileSync(run.stdinPath, "utf8"), "quit\n");
+			assert.equal(fs.existsSync(run.signalPath), false);
+			assert.equal(fs.existsSync(run.gameSignalPath), false);
+		} finally {
+			for (const listener of runnerInt) {
+				if (!process.listeners("SIGINT").includes(listener)) process.on("SIGINT", listener);
+			}
+			try {
+				fs.unlinkSync(hookWitness);
+			} catch {
+				// already removed
+			}
+			await run.cleanup();
+		}
+	});
+
+	test("pre-shutdown — hook failure still writes quit to game stdin", async () => {
+		const run = startRun({
+			mode: "signal",
+			preShutdown: "exit 42",
+		});
+		try {
+			await waitFor(() => fs.existsSync(run.readyPath), "helper readiness");
+			process.kill(process.pid, "SIGTERM");
+			await run.result;
+			assert.equal(fs.readFileSync(run.stdinPath, "utf8"), "quit\n");
+		} finally {
+			await run.cleanup();
+		}
+	});
+
+	for (const [signal, expectedName, expectedNumber] of [
+		["SIGTERM", "SIGTERM", "15"],
+		["SIGINT", "SIGINT", "2"],
+	] as const) {
+		test(`pre-shutdown — hook receives ${expectedName} and ${expectedNumber} on ${signal}`, async () => {
+			const runnerInt = process.listeners("SIGINT").slice();
+			const signalWitness = path.join(
+				os.tmpdir(),
+				`stn-t3-signal-${signal}-${process.pid}-${Date.now()}`,
+			);
+			const run = startRun({
+				mode: "signal",
+				preShutdown: `printf '%s:%s' "$SIGNAL_NAME" "$SIGNAL_NUMBER" > '${signalWitness.replace(/'/g, "'\\''")}'`,
+			});
+			try {
+				await waitFor(() => fs.existsSync(run.readyPath), "helper readiness");
+				if (signal === "SIGINT") {
+					for (const listener of runnerInt) process.removeListener("SIGINT", listener);
+				}
+				process.kill(process.pid, signal);
+				await run.result;
+				assert.equal(
+					fs.readFileSync(signalWitness, "utf8"),
+					`${expectedName}:${expectedNumber}`,
+				);
+				assert.equal(fs.readFileSync(run.stdinPath, "utf8"), "quit\n");
+			} finally {
+				if (signal === "SIGINT") {
+					for (const listener of runnerInt) {
+						if (!process.listeners("SIGINT").includes(listener)) {
+							process.on("SIGINT", listener);
+						}
+					}
+				}
+				try {
+					fs.unlinkSync(signalWitness);
+				} catch {
+					// already removed
+				}
+				await run.cleanup();
+			}
+		});
+	}
 });

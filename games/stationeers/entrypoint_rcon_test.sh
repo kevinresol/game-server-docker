@@ -6,6 +6,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 ENTRYPOINT="$ROOT/games/stationeers/entrypoint.sh"
 STUB_DIR="$(mktemp -d)"
 NODE_STUB_LOG="$(mktemp)"
+export NODE_STUB_LOG
 trap 'rm -rf "$STUB_DIR" "$NODE_STUB_LOG"' EXIT
 
 cat >"$STUB_DIR/node" <<'EOF'
