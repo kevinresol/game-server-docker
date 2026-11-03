@@ -291,7 +291,7 @@ Drafts are not execute-ready until the user explicitly approves Executable. Revi
 
 ### R1 — Peel `--rcon` off the game arguments
 
-**Status:** in_progress
+**Status:** approved
 
 **Depends on:** none
 
@@ -307,22 +307,23 @@ Drafts are not execute-ready until the user explicitly approves Executable. Revi
 
 #### Reviewer checklist
 
-- [ ] `--rcon -file` leaves `-file` as a game argument, and `--rcon 27500` does not start node.
-- [ ] `--rcon=` does not start node and is not turned into port 27500.
-- [ ] The signal traps and `0<&0` are still present.
-- [ ] The test does not start `rocketstation_DedicatedServer.x86_64`.
+- [x] `--rcon -file` leaves `-file` as a game argument, and `--rcon 27500` does not start node.
+- [x] `--rcon=` does not start node and is not turned into port 27500.
+- [x] The signal traps and `0<&0` are still present.
+- [x] The test does not start `rocketstation_DedicatedServer.x86_64`.
 
 #### Agent log
 
 <!-- implementor / reviewer append below -->
 
 - **Coder (R1):** Peels bare `--rcon` and `--rcon=<port>` from container args into `node ~/tool.js run` before `--`; rejects exact `--rcon=`, bare `--rcon` with a non-flag next arg, and duplicate `--rcon` forms before node. Added `entrypoint_rcon_test.sh` (PATH `node` stub) for A6, A6b, A8. Verify: `bash games/stationeers/entrypoint_rcon_test.sh`, `git diff --check` (pass).
+- **Reviewer (R1):** Approve. Verified entrypoint peeling/rejects, traps, and `0<&0`; `entrypoint_rcon_test.sh` covers A6/A6b/A8 with a PATH node stub only. Residual: test relies on inherited `NODE_STUB_LOG` in the stub (works in bash; export would be clearer).
 
 ---
 
 ### R2 — Parse the `--rcon` option
 
-**Status:** done
+**Status:** approved
 
 **Depends on:** none
 
@@ -337,21 +338,22 @@ Drafts are not execute-ready until the user explicitly approves Executable. Revi
 
 #### Reviewer checklist
 
-- [ ] A1's "flag absent" state is representable, and A5's invalid values fail before the handler runs.
-- [ ] The option does not read `setting.xml` and does not change `--log-file`.
-- [ ] Validation errors do not echo a password.
+- [x] A1's "flag absent" state is representable, and A5's invalid values fail before the handler runs.
+- [x] The option does not read `setting.xml` and does not change `--log-file`.
+- [x] Validation errors do not echo a password.
 
 #### Agent log
 
 <!-- implementor / reviewer append below -->
 
 - **2026-11-03 (implementor):** Added optional `--rcon` string option with `validateRconOptionValue` (empty → default port 27500 at bind time; `^[1-9]\d*$` and ≤65535). Updated run command meta/description for Source RCON. Tests in `command.test.ts` (7 cases, no sockets). Verified: `pnpm exec tsx --test games/stationeers/tool/command/run/command.test.ts`, `pnpm exec tsc --noEmit --pretty false`, esbuild bundle to `/tmp/stationeers-tool.js`, `git diff --check`.
+- **Reviewer (R2):** Approve. CLI validation and tests match A1/A5; no secret/XML coupling. Residual: default port 27500 is applied at bind time in later chunks, not in this option module.
 
 ---
 
 ### R3 — Read `ServerAuthSecret` from `setting.xml`
 
-**Status:** implemented (awaiting review)
+**Status:** approved
 
 **Depends on:** none
 
@@ -366,19 +368,20 @@ Drafts are not execute-ready until the user explicitly approves Executable. Revi
 
 #### Reviewer checklist
 
-- [ ] The reader does not open a socket, spawn a process, or log the secret.
-- [ ] `SavePath` inside the XML does not change the file location.
-- [ ] Failures are fail-closed: no secret string is returned.
+- [x] The reader does not open a socket, spawn a process, or log the secret.
+- [x] `SavePath` inside the XML does not change the file location.
+- [x] Failures are fail-closed: no secret string is returned.
 
 #### Agent log
 
 Implementor, 2026-11-03. Added `readServerAuthSecret` / `resolveSettingXmlPath` with injectable `readFile`, install-root default, `-settingspath` override (B7/B7b), hand-rolled `SettingData` / `ServerAuthSecret` parse, entity decoding, distinct fail-closed reasons, no secret logging or caching. Commit `2877cc1`. Verification: `pnpm exec tsx --test games/stationeers/tool/command/run/rcon/secret.test.ts` (17 pass), `pnpm exec tsc --noEmit --pretty false`, `pnpm exec esbuild games/stationeers/tool/main.ts --bundle --platform=node --outfile=/tmp/stationeers-tool.js`, `git diff --check`.
+- **Reviewer (R3):** Approve. Architecture lane holds (XML only, injectable I/O); tests cover B6–B7b and fail-closed paths. Residual: hand-rolled XML parser may reject unusual but valid XML shapes not covered by fixtures.
 
 ---
 
 ### R4 — Source RCON packets
 
-**Status:** in_progress
+**Status:** approved
 
 **Depends on:** none
 
@@ -392,21 +395,22 @@ Implementor, 2026-11-03. Added `readServerAuthSecret` / `resolveSettingXmlPath` 
 
 #### Reviewer checklist
 
-- [ ] Size is little-endian and does not include itself.
-- [ ] The codec has no import from the secret reader, the framer, or `handler.ts`.
-- [ ] A truncated buffer does not decode as a successful auth.
+- [x] Size is little-endian and does not include itself.
+- [x] The codec has no import from the secret reader, the framer, or `handler.ts`.
+- [x] A truncated buffer does not decode as a successful auth.
 
 #### Agent log
 
 <!-- implementor / reviewer append below -->
 
 **Implementor — R4 — 2026-11-03.** Added `protocol.ts` (encode/decode, split response bodies, strip nulls, `isEmptyResponseValueMarker`) and `protocol.test.ts` (16 tests: auth/exec/response/auth-response/id -1/split/end marker/truncated buffer). No imports from secret, framer, or handler. Verify: `pnpm exec tsx --test games/stationeers/tool/command/run/rcon/protocol.test.ts` (16 pass), `pnpm exec tsc --noEmit --pretty false`, `pnpm exec esbuild games/stationeers/tool/main.ts --bundle --platform=node --outfile=/tmp/stationeers-tool.js`, `git diff --check`. Commit `c763c80`.
+- **Reviewer (R4):** Approve. LE size field excludes itself; codec is self-contained per architecture lane. Residual: oversized single-code-point UTF-8 bodies throw at encode time (acceptable until R6 handles errors).
 
 ---
 
 ### R5 — Decide when the console reply has ended
 
-**Status:** in_progress
+**Status:** approved
 
 **Depends on:** none
 
@@ -422,15 +426,16 @@ Implementor, 2026-11-03. Added `readServerAuthSecret` / `resolveSettingXmlPath` 
 
 #### Reviewer checklist
 
-- [ ] The first `>` after the echoed command is not the end when a later line clears it.
-- [ ] `Created new save` arriving one second after a stable prompt is absent from the body.
-- [ ] The framer does not import the packet codec or the secret reader.
+- [x] The first `>` after the echoed command is not the end when a later line clears it.
+- [x] `Created new save` arriving one second after a stable prompt is absent from the body.
+- [x] The framer does not import the packet codec or the secret reader.
 
 #### Agent log
 
 <!-- implementor / reviewer append below -->
 
 **Implementor — R5 — 2026-11-03.** Added `framer.ts` (`createConsoleReplyFramer`, injectable clock, 300ms stable `> ` at column 0, CSI `;1H` / clear-line prompt reset, one echo drop, ANSI stripped from body) and `framer.test.ts` (C1–C5 plus column-0 prompt stream). No socket or `setting.xml`. Verify: `pnpm exec tsx --test games/stationeers/tool/command/run/rcon/framer.test.ts` (6 pass), `pnpm exec tsc --noEmit --pretty false`, `pnpm exec esbuild games/stationeers/tool/main.ts --bundle --platform=node --outfile=/tmp/stationeers-tool.js`, `git diff --check`. Commit `bb7d16d`.
+- **Reviewer (R5):** Approve. C2/C3 behavior and architecture lane verified; framer is stdout-bytes only. Residual: live console timing may differ from fake clock; integration covered in R7/R8.
 
 ---
 
