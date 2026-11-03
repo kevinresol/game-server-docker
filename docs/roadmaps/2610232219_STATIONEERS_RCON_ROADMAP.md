@@ -406,7 +406,7 @@ Implementor, 2026-11-03. Added `readServerAuthSecret` / `resolveSettingXmlPath` 
 
 ### R5 — Decide when the console reply has ended
 
-**Status:** pending
+**Status:** in_progress
 
 **Depends on:** none
 
@@ -414,11 +414,11 @@ Implementor, 2026-11-03. Added `readServerAuthSecret` / `resolveSettingXmlPath` 
 
 #### Implementor checklist
 
-- [ ] Feed stdout bytes and the submitted line in, and return plain reply text. Treat `> ` at column 0 as the prompt. `CSI <row>;1H` is column 0. A prompt is cleared by a cursor address back to column 0 or by the clear-line sequence before 300ms, and that prompt is not the end. The first prompt that stays 300ms is the end.
-- [ ] Drop one echoed occurrence of the submitted line, and drop the prompt. Keep every other payload line, including C2's first line. Drop ANSI cursor and color sequences from the body.
-- [ ] Leave bytes that arrive after the end prompt out of the body.
-- [ ] Unit-test C1, C2, C3, C4, and C5 with scripted byte streams and a fake clock. Include a stream shaped like `ESC[<row>;1H`, spaces, `ESC[<row>;1H`, `> `, and assert that stream is a prompt at column 0.
-- [ ] Do not open a socket and do not read `setting.xml`.
+- [x] Feed stdout bytes and the submitted line in, and return plain reply text. Treat `> ` at column 0 as the prompt. `CSI <row>;1H` is column 0. A prompt is cleared by a cursor address back to column 0 or by the clear-line sequence before 300ms, and that prompt is not the end. The first prompt that stays 300ms is the end.
+- [x] Drop one echoed occurrence of the submitted line, and drop the prompt. Keep every other payload line, including C2's first line. Drop ANSI cursor and color sequences from the body.
+- [x] Leave bytes that arrive after the end prompt out of the body.
+- [x] Unit-test C1, C2, C3, C4, and C5 with scripted byte streams and a fake clock. Include a stream shaped like `ESC[<row>;1H`, spaces, `ESC[<row>;1H`, `> `, and assert that stream is a prompt at column 0.
+- [x] Do not open a socket and do not read `setting.xml`.
 
 #### Reviewer checklist
 
@@ -429,6 +429,8 @@ Implementor, 2026-11-03. Added `readServerAuthSecret` / `resolveSettingXmlPath` 
 #### Agent log
 
 <!-- implementor / reviewer append below -->
+
+**Implementor — R5 — 2026-11-03.** Added `framer.ts` (`createConsoleReplyFramer`, injectable clock, 300ms stable `> ` at column 0, CSI `;1H` / clear-line prompt reset, one echo drop, ANSI stripped from body) and `framer.test.ts` (C1–C5 plus column-0 prompt stream). No socket or `setting.xml`. Verify: `pnpm exec tsx --test games/stationeers/tool/command/run/rcon/framer.test.ts` (6 pass), `pnpm exec tsc --noEmit --pretty false`, `pnpm exec esbuild games/stationeers/tool/main.ts --bundle --platform=node --outfile=/tmp/stationeers-tool.js`, `git diff --check`. Commit `bb7d16d`.
 
 ---
 
