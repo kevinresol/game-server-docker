@@ -441,7 +441,7 @@ Implementor, 2026-11-03. Added `readServerAuthSecret` / `resolveSettingXmlPath` 
 
 ### R6 — Accept Source RCON connections
 
-**Status:** pending
+**Status:** in_progress
 
 **Depends on:** R4
 
@@ -449,12 +449,12 @@ Implementor, 2026-11-03. Added `readServerAuthSecret` / `resolveSettingXmlPath` 
 
 #### Implementor checklist
 
-- [ ] Listen on `0.0.0.0` and the given port. Take a `readSecret` function. Do not import `secret.ts` and do not read game arguments. On each auth packet, call `readSecret` again and compare the body with an exact match.
-- [ ] Buffer the TCP byte stream until a full packet is present. One read that contains two packets yields both. A short read is not a successful auth.
-- [ ] On success, send the empty response-value packet and then the auth-response packet. On failure, send auth-response id `-1`, leave the connection open, and do not call execute.
-- [ ] On an exec packet after auth, call `execute(body)`. Send the returned string as response-value packets with the exec id. If the client sends an empty response-value marker, mirror it after that reply.
-- [ ] An exec before auth calls nothing and closes the connection. A body that contains CR or LF calls nothing and returns one response-value packet, type `0`, with the exec id and body `command rejected`. An empty body calls nothing and returns one empty response-value packet with that id.
-- [ ] Unit-test D1, D2, D3, D4, D5, D7, D8, and D9 with a fake execute function and a fake `readSecret`. Do not spawn the game.
+- [x] Listen on `0.0.0.0` and the given port. Take a `readSecret` function. Do not import `secret.ts` and do not read game arguments. On each auth packet, call `readSecret` again and compare the body with an exact match.
+- [x] Buffer the TCP byte stream until a full packet is present. One read that contains two packets yields both. A short read is not a successful auth.
+- [x] On success, send the empty response-value packet and then the auth-response packet. On failure, send auth-response id `-1`, leave the connection open, and do not call execute.
+- [x] On an exec packet after auth, call `execute(body)`. Send the returned string as response-value packets with the exec id. If the client sends an empty response-value marker, mirror it after that reply.
+- [x] An exec before auth calls nothing and closes the connection. A body that contains CR or LF calls nothing and returns one response-value packet, type `0`, with the exec id and body `command rejected`. An empty body calls nothing and returns one empty response-value packet with that id.
+- [x] Unit-test D1, D2, D3, D4, D5, D7, D8, and D9 with a fake execute function and a fake `readSecret`. Do not spawn the game.
 
 #### Reviewer checklist
 
@@ -465,6 +465,8 @@ Implementor, 2026-11-03. Added `readServerAuthSecret` / `resolveSettingXmlPath` 
 #### Agent log
 
 <!-- implementor / reviewer append below -->
+
+- **Coder (R6):** Added `createRconServer` in `server.ts` (TCP on `0.0.0.0`, injectable `readSecret`/`execute`, stream buffering, auth/exec/marker handling; no `secret.ts` import) and `server.test.ts` (D1–D5, D7–D9 plus newline rejection and secret-not-in-logs). Verify: `pnpm exec tsx --test games/stationeers/tool/command/run/rcon/server.test.ts` (11 pass), `pnpm exec tsc --noEmit --pretty false`, esbuild bundle to `/tmp/stationeers-tool.js`, `git diff --check`.
 
 ---
 
