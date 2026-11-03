@@ -291,7 +291,7 @@ Drafts are not execute-ready until the user explicitly approves Executable. Revi
 
 ### R1 — Peel `--rcon` off the game arguments
 
-**Status:** pending
+**Status:** in_progress
 
 **Depends on:** none
 
@@ -299,11 +299,11 @@ Drafts are not execute-ready until the user explicitly approves Executable. Revi
 
 #### Implementor checklist
 
-- [ ] Move each bare `--rcon` and each `--rcon=<port>` from the container argument list to `node ~/tool.js run` before `--`. Leave every other argument after `--`, in order.
-- [ ] Reject the exact token `--rcon=` before starting node. A bare `--rcon` whose next argument does not start with `-` also exits non-zero before node. `--rcon -file` is port 27500 with `-file` left after `--`.
-- [ ] If the list contains more than one `--rcon` form, exit with a non-zero status before starting node, and print an error that does not include a password.
-- [ ] Keep the existing stdin redirect, SIGTERM trap, and SIGINT trap.
-- [ ] Prove A6, A6b, and A8 with `entrypoint_rcon_test.sh`, using a `PATH` stub for `node`. Assert the stub is not executed for `--rcon=`, for `--rcon 27500`, and for a duplicate flag.
+- [x] Move each bare `--rcon` and each `--rcon=<port>` from the container argument list to `node ~/tool.js run` before `--`. Leave every other argument after `--`, in order.
+- [x] Reject the exact token `--rcon=` before starting node. A bare `--rcon` whose next argument does not start with `-` also exits non-zero before node. `--rcon -file` is port 27500 with `-file` left after `--`.
+- [x] If the list contains more than one `--rcon` form, exit with a non-zero status before starting node, and print an error that does not include a password.
+- [x] Keep the existing stdin redirect, SIGTERM trap, and SIGINT trap.
+- [x] Prove A6, A6b, and A8 with `entrypoint_rcon_test.sh`, using a `PATH` stub for `node`. Assert the stub is not executed for `--rcon=`, for `--rcon 27500`, and for a duplicate flag.
 
 #### Reviewer checklist
 
@@ -315,6 +315,8 @@ Drafts are not execute-ready until the user explicitly approves Executable. Revi
 #### Agent log
 
 <!-- implementor / reviewer append below -->
+
+- **Coder (R1):** Peels bare `--rcon` and `--rcon=<port>` from container args into `node ~/tool.js run` before `--`; rejects exact `--rcon=`, bare `--rcon` with a non-flag next arg, and duplicate `--rcon` forms before node. Added `entrypoint_rcon_test.sh` (PATH `node` stub) for A6, A6b, A8. Verify: `bash games/stationeers/entrypoint_rcon_test.sh`, `git diff --check` (pass).
 
 ---
 
