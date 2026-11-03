@@ -156,13 +156,13 @@ Drafts are not execute-ready until the user explicitly approves Executable. Lock
 
 #### Implementor checklist
 
-- [ ] Extend the **R9 shared shutdown function** (do not duplicate RCON stdin holds): single-flight **SIGTERM and SIGINT** handlers. When `preShutdown` is set, await hook completion (or timeout/kill) and fd-3 forwarding before calling the R9 console quit phase. When unset, call that quit phase directly (today’s `quit\n` write only).
-- [ ] When `preShutdown` is unset, preserve today’s termination behavior (`quit\n` on SIGTERM and SIGINT; never `proc.kill("SIGINT")` on the `stn-pty` child).
-- [ ] When set, spawn `sh -c` with `SIGNAL_NAME`, `SIGNAL_NUMBER`, and **`SERVER_STDIN_FD=3`**; use **`stdio: ['inherit', 'inherit', 'inherit', 'pipe']`** (or equivalent) so fd 3 is the hook→Node pipe; Node forwards fd-3 data to `proc.stdin` until hook exit/timeout, then stops forwarding and closes the pipe.
-- [ ] When `preShutdown` is set, spawn the dedicated server so terminal SIGINT does not reach the server before the hook (process group / session per Decisions); document spawn options in the Agent log.
-- [ ] Ensure hook stdout/stderr remain visible on the operator console; stdin (fd 0) is not the server bridge—fd 3 is.
-- [ ] Avoid duplicate hook runs and duplicate `quit\n` writes if SIGTERM and SIGINT arrive close together.
-- [ ] When `--rcon` is enabled, shutdown respects in-flight RCON before `quit\n` per R9/D6.
+- [x] Extend the **R9 shared shutdown function** (do not duplicate RCON stdin holds): single-flight **SIGTERM and SIGINT** handlers. When `preShutdown` is set, await hook completion (or timeout/kill) and fd-3 forwarding before calling the R9 console quit phase. When unset, call that quit phase directly (today’s `quit\n` write only).
+- [x] When `preShutdown` is unset, preserve today’s termination behavior (`quit\n` on SIGTERM and SIGINT; never `proc.kill("SIGINT")` on the `stn-pty` child).
+- [x] When set, spawn `sh -c` with `SIGNAL_NAME`, `SIGNAL_NUMBER`, and **`SERVER_STDIN_FD=3`**; use **`stdio: ['inherit', 'inherit', 'inherit', 'pipe']`** (or equivalent) so fd 3 is the hook→Node pipe; Node forwards fd-3 data to `proc.stdin` until hook exit/timeout, then stops forwarding and closes the pipe.
+- [x] When `preShutdown` is set, spawn the dedicated server so terminal SIGINT does not reach the server before the hook (process group / session per Decisions); document spawn options in the Agent log.
+- [x] Ensure hook stdout/stderr remain visible on the operator console; stdin (fd 0) is not the server bridge—fd 3 is.
+- [x] Avoid duplicate hook runs and duplicate `quit\n` writes if SIGTERM and SIGINT arrive close together.
+- [x] When `--rcon` is enabled, shutdown respects in-flight RCON before `quit\n` per R9/D6.
 
 #### Reviewer checklist
 
@@ -176,6 +176,8 @@ Drafts are not execute-ready until the user explicitly approves Executable. Lock
 #### Agent log
 
 <!-- implementor / reviewer append below -->
+
+**Implementor — T2 — 2026-11-03.** Extended exported `createConsoleQuitShutdown` with optional `runPreShutdown` (hook → `waitBeforeQuit` → `quit\n`, single-flight). Hook: `/bin/sh -c`, env `SIGNAL_NAME` / `SIGNAL_NUMBER` / `SERVER_STDIN_FD=3`, stdio fourth pipe forwarded to server stdin during hook only; 60s timeout with SIGKILL; failures logged, shutdown continues. RCON execute rejects after `shutdownStarted`. Server spawn uses **`detached: true`** when pre-shutdown is set (new session / process group on Unix). Verify: 25× `handler.test.ts`, `tsc`, esbuild, `git diff --check`. Commit **`34dbf1a`**.
 
 ---
 

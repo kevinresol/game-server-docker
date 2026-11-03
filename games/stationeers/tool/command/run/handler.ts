@@ -1,5 +1,5 @@
 import { HandlerInput } from "@why-ts/cli";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { appendFile } from "node:fs/promises";
 import fs from "node:fs";
 import { Readable, type Writable } from "node:stream";
@@ -11,6 +11,9 @@ import { startPlayerLog } from "./playerlog";
 
 const DEFAULT_PTY_BIN = "/home/steam/shim/stn-pty";
 const SHIM_LIBRARY = "/home/steam/shim/libkernel32-shim.so";
+const PRE_SHUTDOWN_TIMEOUT_MS = 60_000;
+
+export type ShutdownSignal = "SIGTERM" | "SIGINT";
 
 type Args = {
 	binPath: string;
@@ -63,7 +66,8 @@ function ldPreloadForChild(existing: string | undefined): string {
 export default async function ({
 	args: { binPath, logFile, preShutdown, rcon, "--": forwarded },
 }: HandlerInput<Args>) {
-	void preShutdown;
+	const preShutdownCommand = preShutdown?.trim();
+	const hasPreShutdown = preShutdownCommand !== undefined && preShutdownCommand.length > 0;
 	const gameArgs = [...(forwarded ?? [])];
 	const rconPort = resolveRconPort(rcon);
 	if (gameArgs.some((arg) => arg.toLowerCase() === "-logfile")) {
@@ -83,6 +87,7 @@ export default async function ({
 	let consoleExchange: ReturnType<typeof createConsoleExchange> | undefined;
 	let stdinBridge: ParentStdinBridge | undefined;
 	let rconInflight: Promise<string> | undefined;
+	let shutdownStarted = false;
 	if (rconPort !== undefined) {
 		const readSecret = () => readSecretForRcon(binPath, gameArgs);
 		try {
@@ -90,6 +95,9 @@ export default async function ({
 				port: rconPort,
 				readSecret,
 				execute: (body) => {
+					if (shutdownStarted) {
+						throw new Error("RCON requests are not accepted during shutdown");
+					}
 					if (!consoleExchange || !stdinBridge) {
 						throw new Error("RCON console exchange is not ready");
 					}
@@ -119,12 +127,15 @@ export default async function ({
 
 	const ptyBin = process.env.STN_PTY_BIN ?? DEFAULT_PTY_BIN;
 	const gameBinary = `${binPath}/rocketstation_DedicatedServer.x86_64`;
+	// With a pre-shutdown hook, spawn the server in its own session so terminal
+	// SIGINT reaches this Node runner first (detached → setsid on Unix).
 	const proc = spawn(ptyBin, [gameBinary, ...gameArgs], {
 		stdio: ["pipe", "pipe", "pipe"],
 		env: {
 			...process.env,
 			LD_PRELOAD: ldPreloadForChild(process.env.LD_PRELOAD),
 		},
+		...(hasPreShutdown ? { detached: true } : {}),
 	});
 
 	const childIn = proc.stdin;
@@ -162,12 +173,23 @@ export default async function ({
 	const beginShutdown = createConsoleQuitShutdown({
 		waitBeforeQuit: waitForRconIdle,
 		writeQuitLine: () => writeConsoleLine("quit\n"),
+		runPreShutdown: hasPreShutdown
+			? (signal) =>
+					runPreShutdownHook({
+						command: preShutdownCommand!,
+						signal,
+						childIn,
+						stdinBridge,
+					})
+			: undefined,
 	});
 	process.on("SIGTERM", () => {
-		void beginShutdown();
+		shutdownStarted = true;
+		void beginShutdown("SIGTERM");
 	});
 	process.on("SIGINT", () => {
-		void beginShutdown();
+		shutdownStarted = true;
+		void beginShutdown("SIGINT");
 	});
 
 	if (rconServer) {
@@ -227,20 +249,120 @@ function onChildStdinError(error: Error | null | undefined): void {
 	console.error(`Failed to write server stdin: ${error}`);
 }
 
-/** Single-flight console shutdown (quit line). T2 wraps this after an optional pre-shutdown hook. */
+/** Single-flight console shutdown: optional pre-shutdown hook, then RCON idle wait, then quit line. */
 export function createConsoleQuitShutdown(options: {
 	waitBeforeQuit: () => Promise<void>;
 	writeQuitLine: () => void;
-}): () => Promise<void> {
+	runPreShutdown?: (signal: ShutdownSignal) => Promise<void>;
+}): (signal: ShutdownSignal) => Promise<void> {
 	let flight: Promise<void> | undefined;
-	return () => {
+	return (signal: ShutdownSignal) => {
 		if (!flight) {
-			flight = options.waitBeforeQuit().then(() => {
+			flight = (async () => {
+				if (options.runPreShutdown) {
+					await options.runPreShutdown(signal);
+				}
+				await options.waitBeforeQuit();
 				options.writeQuitLine();
-			});
+			})();
 		}
 		return flight;
 	};
+}
+
+async function runPreShutdownHook(options: {
+	command: string;
+	signal: ShutdownSignal;
+	childIn: Writable;
+	stdinBridge: ParentStdinBridge | undefined;
+}): Promise<void> {
+	const { command, signal, childIn, stdinBridge } = options;
+	const signalNumber = signal === "SIGTERM" ? 15 : 2;
+	if (stdinBridge) stdinBridge.hold();
+
+	let hook: ChildProcess;
+	try {
+		hook = spawn("/bin/sh", ["-c", command], {
+			stdio: ["inherit", "inherit", "inherit", "pipe"],
+			env: {
+				...process.env,
+				SIGNAL_NAME: signal,
+				SIGNAL_NUMBER: String(signalNumber),
+				SERVER_STDIN_FD: "3",
+			},
+		});
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.error(`Pre-shutdown hook failed to start: ${message}`);
+		return;
+	}
+
+	const hookServerIn = hook.stdio[3];
+	let bridgeOpen = false;
+
+	const forwardHookStdin = (chunk: Buffer | string): void => {
+		if (!bridgeOpen) return;
+		const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+		if (childIn.destroyed || childIn.writableEnded) return;
+		childIn.write(buf, (writeError) => {
+			if (writeError) onChildStdinError(writeError);
+		});
+	};
+
+	const closeHookBridge = (): void => {
+		bridgeOpen = false;
+		if (hookServerIn && typeof hookServerIn !== "number") {
+			hookServerIn.off("data", forwardHookStdin);
+			hookServerIn.destroy();
+		}
+	};
+
+	if (hookServerIn && typeof hookServerIn !== "number") {
+		bridgeOpen = true;
+		hookServerIn.on("data", forwardHookStdin);
+	}
+
+	try {
+		await waitForPreShutdownHook(hook, PRE_SHUTDOWN_TIMEOUT_MS);
+	} finally {
+		closeHookBridge();
+	}
+}
+
+function waitForPreShutdownHook(hook: ChildProcess, timeoutMs: number): Promise<void> {
+	return new Promise((resolve) => {
+		let settled = false;
+		const finish = (): void => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			resolve();
+		};
+
+		const timer = setTimeout(() => {
+			console.error(
+				`Pre-shutdown hook timed out after ${timeoutMs / 1000}s; terminating hook.`,
+			);
+			try {
+				hook.kill("SIGKILL");
+			} catch {
+				// Hook may already have exited.
+			}
+		}, timeoutMs);
+
+		hook.on("error", (error) => {
+			console.error(`Pre-shutdown hook failed to start: ${error.message}`);
+			finish();
+		});
+		hook.on("exit", (code, hookSignal) => {
+			if (code !== 0 && code !== null) {
+				console.error(`Pre-shutdown hook exited with code ${code}`);
+			} else if (hookSignal) {
+				console.error(`Pre-shutdown hook terminated by signal ${hookSignal}`);
+			}
+			finish();
+		});
+	});
 }
 
 function createParentStdinBridge(parentIn: NodeJS.ReadableStream, childIn: Writable): ParentStdinBridge {
