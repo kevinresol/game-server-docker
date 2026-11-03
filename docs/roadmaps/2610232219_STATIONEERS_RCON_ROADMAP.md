@@ -322,7 +322,7 @@ Drafts are not execute-ready until the user explicitly approves Executable. Revi
 
 ### R2 — Parse the `--rcon` option
 
-**Status:** pending
+**Status:** done
 
 **Depends on:** none
 
@@ -330,10 +330,10 @@ Drafts are not execute-ready until the user explicitly approves Executable. Revi
 
 #### Implementor checklist
 
-- [ ] Add an optional `@why-ts/cli` string option `rcon`. Absent means RCON is off. An empty string is only the bare `--rcon` flag and means port 27500. Any other value must be a decimal integer from 1 through 65535 with no sign, no leading zero, and no extra characters.
-- [ ] Invalid values, including `01`, fail in option validation, before the run handler starts the game.
-- [ ] Update the run command description so it states that `--rcon` enables Source RCON and that a bare flag uses port 27500.
-- [ ] Unit-test absent, empty string, `27500`, `27015`, `0`, `99999`, `abc`, and `01`. Do not open a socket in this chunk. Do not treat the empty string as invalid.
+- [x] Add an optional `@why-ts/cli` string option `rcon`. Absent means RCON is off. An empty string is only the bare `--rcon` flag and means port 27500. Any other value must be a decimal integer from 1 through 65535 with no sign, no leading zero, and no extra characters.
+- [x] Invalid values, including `01`, fail in option validation, before the run handler starts the game.
+- [x] Update the run command description so it states that `--rcon` enables Source RCON and that a bare flag uses port 27500.
+- [x] Unit-test absent, empty string, `27500`, `27015`, `0`, `99999`, `abc`, and `01`. Do not open a socket in this chunk. Do not treat the empty string as invalid.
 
 #### Reviewer checklist
 
@@ -344,6 +344,8 @@ Drafts are not execute-ready until the user explicitly approves Executable. Revi
 #### Agent log
 
 <!-- implementor / reviewer append below -->
+
+- **2026-11-03 (implementor):** Added optional `--rcon` string option with `validateRconOptionValue` (empty → default port 27500 at bind time; `^[1-9]\d*$` and ≤65535). Updated run command meta/description for Source RCON. Tests in `command.test.ts` (7 cases, no sockets). Verified: `pnpm exec tsx --test games/stationeers/tool/command/run/command.test.ts`, `pnpm exec tsc --noEmit --pretty false`, esbuild bundle to `/tmp/stationeers-tool.js`, `git diff --check`.
 
 ---
 
