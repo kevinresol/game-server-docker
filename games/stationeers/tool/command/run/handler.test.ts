@@ -3,7 +3,7 @@ import { ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { Readable } from "node:stream";
+import { PassThrough, Readable } from "node:stream";
 import { describe, test } from "node:test";
 import handler from "./handler";
 
@@ -22,7 +22,7 @@ const DIAGNOSTIC = Buffer.from("pty-stderr");
 type Report = {
 	argv: string[];
 	ldPreload: string | null;
-	stdin: { dev: string; ino: string; matchesParentStdin: boolean };
+	stdin: { dev: string; ino: string; isPipe: boolean; matchesParentStdin: boolean };
 };
 
 type Started = {
@@ -43,6 +43,7 @@ type Started = {
 	childEvents: string[];
 	signalPath: string;
 	gameSignalPath: string;
+	stdinPath: string;
 	readyPath: string;
 	cleanup: () => Promise<void>;
 };
@@ -56,6 +57,18 @@ function writeExecutable(file: string, body: string): void {
 function parentStdinIdentity(): { dev: string; ino: string } {
 	const stat = fs.fstatSync(0);
 	return { dev: String(stat.dev), ino: String(stat.ino) };
+}
+
+function swapStdin(stream: Readable): () => void {
+	const descriptor = Object.getOwnPropertyDescriptor(process, "stdin");
+	Object.defineProperty(process, "stdin", {
+		configurable: true,
+		enumerable: true,
+		get: () => stream,
+	});
+	return () => {
+		if (descriptor) Object.defineProperty(process, "stdin", descriptor);
+	};
 }
 
 function waitFor(predicate: () => boolean, label: string): Promise<void> {
@@ -200,7 +213,7 @@ function tapStdioPipes(acceptStdout?: (chunk: Buffer, index: number) => boolean)
 function startRun(options: {
 	args?: string[];
 	useLogFile?: boolean;
-	mode: "exit" | "output" | "output-wait" | "output-split" | "wait" | "signal";
+	mode: "exit" | "output" | "output-wait" | "output-split" | "wait" | "signal" | "stdin";
 	exitCode?: number;
 	payload?: Buffer;
 	cut?: number;
@@ -218,6 +231,7 @@ function startRun(options: {
 	const releasePath = path.join(dir, "release");
 	const signalPath = path.join(dir, "helper-signal");
 	const gameSignalPath = path.join(dir, "game-signal");
+	const stdinPath = path.join(dir, "game-stdin");
 	const helperPidPath = path.join(dir, "helper.pid");
 	const gamePidPath = path.join(dir, "game.pid");
 	const exitPath = path.join(dir, "exit");
@@ -264,7 +278,7 @@ if (mode === "output" || mode === "output-wait" || mode === "output-split") {
       process.exit(0);
     }
   }, 15);
-} else if (mode === "signal") {
+} else if (mode === "signal" || mode === "stdin") {
   process.on("SIGINT", () => {
     fs.writeFileSync(process.env.STN_FAKE_GAME_SIGNAL, "SIGINT");
     process.exit(0);
@@ -272,6 +286,12 @@ if (mode === "output" || mode === "output-wait" || mode === "output-split") {
   process.on("SIGTERM", () => {
     fs.writeFileSync(process.env.STN_FAKE_GAME_SIGNAL, "SIGTERM");
     process.exit(0);
+  });
+  let seen = Buffer.alloc(0);
+  process.stdin.on("data", (chunk) => {
+    seen = Buffer.concat([seen, Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)]);
+    fs.writeFileSync(process.env.STN_FAKE_STDIN, seen);
+    if (seen.includes(10)) process.exit(0);
   });
   fs.writeFileSync(process.env.STN_FAKE_READY, "ready");
   setInterval(() => {}, 1000);
@@ -291,6 +311,7 @@ const st = fs.fstatSync(0);
 const stdin = {
   dev: String(st.dev),
   ino: String(st.ino),
+  isPipe: st.isFIFO() || st.isSocket(),
   matchesParentStdin:
     String(st.dev) === process.env.STN_EXPECT_STDIN_DEV &&
     String(st.ino) === process.env.STN_EXPECT_STDIN_INO,
@@ -302,10 +323,6 @@ fs.writeFileSync(process.env.STN_FAKE_REPORT, JSON.stringify({
     : null,
   stdin,
 }));
-if (!stdin.matchesParentStdin) {
-  process.stderr.write("stdin was a new pipe, not the wrapper fd 0\\n");
-  process.exit(2);
-}
 let child;
 function note(signal) {
   const file = process.env.STN_FAKE_SIGNAL;
@@ -341,6 +358,7 @@ child.on("close", (code) => process.exit(code === null ? 1 : code));
 	assignEnv("STN_FAKE_RELEASE", releasePath);
 	assignEnv("STN_FAKE_SIGNAL", signalPath);
 	assignEnv("STN_FAKE_GAME_SIGNAL", gameSignalPath);
+	assignEnv("STN_FAKE_STDIN", stdinPath);
 	assignEnv("STN_FAKE_HELPER_PID", helperPidPath);
 	assignEnv("STN_FAKE_GAME_PID", gamePidPath);
 	assignEnv("STN_FAKE_CUT", String(options.cut ?? 0));
@@ -445,6 +463,7 @@ child.on("close", (code) => process.exit(code === null ? 1 : code));
 		childEvents: lifecycle.events,
 		signalPath,
 		gameSignalPath,
+		stdinPath,
 		readyPath,
 		cleanup,
 	};
@@ -491,24 +510,31 @@ describe("stationeers run handler", { concurrency: false }, () => {
 		}
 	});
 
-	test("helper fd 0 is the wrapper stdin, not a Node pipe", async () => {
-		const expected = parentStdinIdentity();
+	test("helper stdin is a pipe the wrapper can write", async () => {
 		const run = startRun({ mode: "exit" });
 		try {
-			const outcome = await run.result.then(
-				() => ({ ok: true as const }),
-				(error: unknown) => ({ ok: false as const, error }),
-			);
+			await run.result;
 			const stdin = run.readReport().stdin;
-			assert.equal(stdin.dev, expected.dev);
-			assert.equal(stdin.ino, expected.ino);
-			assert.equal(
-				stdin.matchesParentStdin,
-				true,
-				"fake helper saw a stdin pipe created by Node instead of the inherited fd 0",
-			);
-			assert.equal(outcome.ok, true);
+			assert.equal(stdin.isPipe, true);
+			assert.equal(stdin.matchesParentStdin, false);
 		} finally {
+			await run.cleanup();
+		}
+	});
+
+	test("copies wrapper stdin through to the game console", async () => {
+		const input = new PassThrough();
+		const restoreStdin = swapStdin(input);
+		const run = startRun({ mode: "stdin" });
+		try {
+			await waitFor(() => fs.existsSync(run.readyPath), "helper readiness");
+			input.write("save demo\n");
+			await run.result;
+			assert.equal(fs.readFileSync(run.stdinPath, "utf8"), "save demo\n");
+			assert.equal(fs.existsSync(run.signalPath), false);
+			assert.equal(fs.existsSync(run.gameSignalPath), false);
+		} finally {
+			restoreStdin();
 			await run.cleanup();
 		}
 	});
@@ -727,21 +753,22 @@ describe("stationeers run handler", { concurrency: false }, () => {
 		}
 	});
 
-	test("forwards SIGTERM to the helper and the game", async () => {
+	test("writes quit on SIGTERM and does not signal the helper or the game", async () => {
 		const run = startRun({ mode: "signal" });
 		try {
 			await waitFor(() => fs.existsSync(run.readyPath), "helper readiness");
 			process.kill(process.pid, "SIGTERM");
 			await run.result;
-			assert.equal(fs.readFileSync(run.signalPath, "utf8"), "SIGTERM");
-			assert.equal(fs.readFileSync(run.gameSignalPath, "utf8"), "SIGTERM");
+			assert.equal(fs.readFileSync(run.stdinPath, "utf8"), "quit\n");
+			assert.equal(fs.existsSync(run.signalPath), false);
+			assert.equal(fs.existsSync(run.gameSignalPath), false);
 			assert.deepEqual(run.logs(), [["Server process exited with code: ", 0]]);
 		} finally {
 			await run.cleanup();
 		}
 	});
 
-	test("forwards SIGINT to the helper and the game", async () => {
+	test("writes quit on SIGINT and does not signal the helper or the game", async () => {
 		const runnerInt = process.listeners("SIGINT").slice();
 		const run = startRun({ mode: "signal" });
 		try {
@@ -749,8 +776,9 @@ describe("stationeers run handler", { concurrency: false }, () => {
 			for (const listener of runnerInt) process.removeListener("SIGINT", listener);
 			process.kill(process.pid, "SIGINT");
 			await run.result;
-			assert.equal(fs.readFileSync(run.signalPath, "utf8"), "SIGINT");
-			assert.equal(fs.readFileSync(run.gameSignalPath, "utf8"), "SIGINT");
+			assert.equal(fs.readFileSync(run.stdinPath, "utf8"), "quit\n");
+			assert.equal(fs.existsSync(run.signalPath), false);
+			assert.equal(fs.existsSync(run.gameSignalPath), false);
 			assert.deepEqual(run.logs(), [["Server process exited with code: ", 0]]);
 		} finally {
 			await run.cleanup();

@@ -42,28 +42,44 @@ export default async function ({
 	const ptyBin = process.env.STN_PTY_BIN ?? DEFAULT_PTY_BIN;
 	const gameBinary = `${binPath}/rocketstation_DedicatedServer.x86_64`;
 	const proc = spawn(ptyBin, [gameBinary, ...gameArgs], {
-		stdio: ["inherit", "pipe", "pipe"],
+		stdio: ["pipe", "pipe", "pipe"],
 		env: {
 			...process.env,
 			LD_PRELOAD: ldPreloadForChild(process.env.LD_PRELOAD),
 		},
 	});
 
-	// Docker stop is SIGTERM at PID 1, then here. Ctrl+C is SIGINT at PID 1, then here.
-	// stn-pty forwards SIGINT and delivers SIGTERM to the game as SIGINT.
-	process.on("SIGTERM", () => proc.kill("SIGTERM"));
-	process.on("SIGINT", () => proc.kill("SIGINT"));
-
-	if (!proc.stdout || !proc.stderr) {
+	const childIn = proc.stdin;
+	const childOut = proc.stdout;
+	const childErr = proc.stderr;
+	if (!childIn || !childOut || !childErr) {
 		proc.kill("SIGKILL");
-		throw new Error("stn-pty stdout and stderr must be pipes");
+		throw new Error("stn-pty stdin, stdout, and stderr must be pipes");
 	}
+
+	// Docker stop is SIGTERM at PID 1, then here. Ctrl+C is SIGINT at PID 1, then here.
+	// The dedicated server exits on the console command. Signaling stn-pty would
+	// deliver SIGINT to the game instead, so these handlers only write "quit".
+	// Parent stdin stays open after EOF so a later quit can still be written.
+	// Keep this stream object: close must unpipe the same one the handler piped.
+	const parentIn = process.stdin;
+	childIn.on("error", onChildStdinError);
+	parentIn.pipe(childIn, { end: false });
+	if (typeof parentIn.unref === "function") parentIn.unref();
+	const sendQuit = () => {
+		if (childIn.destroyed || childIn.writableEnded) return;
+		childIn.write("quit\n", (error) => {
+			if (error) onChildStdinError(error);
+		});
+	};
+	process.on("SIGTERM", sendQuit);
+	process.on("SIGINT", sendQuit);
 
 	// One write path. A byte is appended to --log-file only from the stdout
 	// write callback, so a chunk process.stdout has not accepted cannot land
 	// in the file first. Stderr is not part of that path. No CR or escape stripping.
-	const stdoutFlush = forwardStdout(proc.stdout, logFile);
-	proc.stderr.pipe(process.stderr);
+	const stdoutFlush = forwardStdout(childOut, logFile);
+	childErr.pipe(process.stderr);
 
 	// Unity's Player.log is separate from the --log-file tee. startPlayerLog
 	// returns immediately; stop() on close does not wait out the 30s discovery.
@@ -73,6 +89,8 @@ export default async function ({
 		// "close" fires after stdout/stderr have ended, so the last bytes are
 		// in the tee file before it is deleted. "exit" can run earlier.
 		proc.on("close", (code) => {
+			parentIn.unpipe(childIn);
+			parentIn.pause();
 			playerLog.stop();
 			void stdoutFlush.then(() => {
 				console.log("Server process exited with code: ", code);
@@ -91,6 +109,13 @@ export default async function ({
 			});
 		});
 	});
+}
+
+function onChildStdinError(error: Error | null | undefined): void {
+	if (!error) return;
+	const code = (error as NodeJS.ErrnoException).code;
+	if (code === "EPIPE" || code === "ERR_STREAM_DESTROYED") return;
+	console.error(`Failed to write server stdin: ${error}`);
 }
 
 // Helper stdout is written only through process.stdout.write. The log file is

@@ -2,3 +2,5 @@ node_modules
 dist
 tmp
 
+/stn-diag
+/stationeers
