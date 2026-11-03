@@ -148,7 +148,7 @@ Drafts are not execute-ready until the user explicitly approves Executable. Lock
 
 ### T2 — Hook, fd-3 server stdin bridge, then console quit shutdown
 
-**Status:** pending
+**Status:** approved
 
 **Depends on:** T1 approved; **R9** of `2610232219_STATIONEERS_RCON_ROADMAP.md` approved
 
@@ -166,24 +166,25 @@ Drafts are not execute-ready until the user explicitly approves Executable. Lock
 
 #### Reviewer checklist
 
-- [ ] Verify ordering: hook phase completes or times out before `quit\n` when a hook is configured.
-- [ ] Verify no-hook SIGTERM/SIGINT paths match today’s `handler.ts` (`quit\n` only).
-- [ ] Verify interactive SIGINT ordering (A2) when hook is configured.
-- [ ] Verify Decisions on failure policy and timeout are implemented, not hard-coded silent swallow.
-- [ ] Verify async signal handling cannot write `quit\n` before hook completion (including race with duplicate SIGTERM).
-- [ ] Verify fd-3 forwarding cannot write to server stdin after the hook phase ends and does not run when `preShutdown` is unset.
+- [x] Verify ordering: hook phase completes or times out before `quit\n` when a hook is configured.
+- [x] Verify no-hook SIGTERM/SIGINT paths match today’s `handler.ts` (`quit\n` only).
+- [x] Verify interactive SIGINT ordering (A2) when hook is configured.
+- [x] Verify Decisions on failure policy and timeout are implemented, not hard-coded silent swallow.
+- [x] Verify async signal handling cannot write `quit\n` before hook completion (including race with duplicate SIGTERM).
+- [x] Verify fd-3 forwarding cannot write to server stdin after the hook phase ends and does not run when `preShutdown` is unset.
 
 #### Agent log
 
 <!-- implementor / reviewer append below -->
 
-**Implementor — T2 — 2026-11-03.** Extended exported `createConsoleQuitShutdown` with optional `runPreShutdown` (hook → `waitBeforeQuit` → `quit\n`, single-flight). Hook: `/bin/sh -c`, env `SIGNAL_NAME` / `SIGNAL_NUMBER` / `SERVER_STDIN_FD=3`, stdio fourth pipe forwarded to server stdin during hook only; 60s timeout with SIGKILL; failures logged, shutdown continues. RCON execute rejects after `shutdownStarted`. Server spawn uses **`detached: true`** when pre-shutdown is set (new session / process group on Unix). Verify: 25× `handler.test.ts`, `tsc`, esbuild, `git diff --check`. Commit **`34dbf1a`**.
+**Implementor — T2 — 2026-11-03.** Extended exported `createConsoleQuitShutdown` with optional `runPreShutdown` (hook → `waitBeforeQuit` → `quit\n`, single-flight). Hook: `/bin/sh -c`, env `SIGNAL_NAME` / `SIGNAL_NUMBER` / `SERVER_STDIN_FD=3`, stdio fourth pipe forwarded to server stdin during hook only; 60s timeout with SIGKILL; failures logged, shutdown continues. RCON execute rejects after `shutdownStarted`. Server spawn uses **`detached: true`** when pre-shutdown is set (new session / process group on Unix). Verify: 25× `handler.test.ts`, `tsc`, esbuild, `git diff --check`. Commit **`dc913d5`**.
+- **Reviewer (T2):** Approve on `dc913d5`. Hook-before-quit ordering, fd-3 bridge teardown, single-flight shutdown, stderr on hook errors/timeout; no-hook tests unchanged. Residual: 60s timeout not unit-tested (T3 scope gap).
 
 ---
 
 ### T3 — Automated tests for pre-shutdown ordering
 
-**Status:** pending
+**Status:** approved
 
 **Depends on:** T2 approved
 
@@ -191,21 +192,22 @@ Drafts are not execute-ready until the user explicitly approves Executable. Lock
 
 #### Implementor checklist
 
-- [ ] Add `tsx --test` coverage using a fake server process (spawn `node -e` sleep script) and a hook command that writes a sequenced witness (file or stdout).
-- [ ] Assert hook runs before fake server stdin receives `quit\n` when Node gets SIGTERM or SIGINT (witness on stdin bytes or a test double).
-- [ ] Cover unset hook (`quit\n` only, no kill), hook failure (non-zero exit still writes `quit`), `SIGNAL_NAME` for both SIGTERM and SIGINT, and **C1** (line written to fd 3 reaches fake server stdin before `quit\n`).
-- [ ] Keep tests hermetic; no Docker or real Stationeers binary required.
+- [x] Add `tsx --test` coverage using a fake server process (spawn `node -e` sleep script) and a hook command that writes a sequenced witness (file or stdout).
+- [x] Assert hook runs before fake server stdin receives `quit\n` when Node gets SIGTERM or SIGINT (witness on stdin bytes or a test double).
+- [x] Cover unset hook (`quit\n` only, no kill), hook failure (non-zero exit still writes `quit`), `SIGNAL_NAME` for both SIGTERM and SIGINT, and **C1** (line written to fd 3 reaches fake server stdin before `quit\n`).
+- [x] Keep tests hermetic; no Docker or real Stationeers binary required.
 
 #### Reviewer checklist
 
-- [ ] Confirm tests prove ordering and regression for no-hook path, not only string matching in source.
-- [ ] Confirm test Files stay within chunk scope.
+- [x] Confirm tests prove ordering and regression for no-hook path, not only string matching in source.
+- [x] Confirm test Files stay within chunk scope.
 
 #### Agent log
 
 <!-- implementor / reviewer append below -->
 
----
+**Implementor — T3 — 2026-11-03.** Five `handler.test.ts` cases: fd-3 before `quit\n` (SIGTERM), hook witness before quit (SIGINT), hook failure still quits, `SIGNAL_NAME`/`SIGNAL_NUMBER` for SIGTERM and SIGINT; reuses existing no-hook signal tests. `entrypoint_rcon_test.sh` exports `NODE_STUB_LOG`. Verify: 92× `tsx --test` under `games/stationeers/tool`, `entrypoint_rcon_test.sh`, `tsc`, esbuild, `git diff --check`.
+- **Reviewer (T3):** Approve. Ordering asserted on captured game stdin and hook witness files; scope limited to `handler.test.ts` + entrypoint test export. Residual: hook 60s timeout still untested.
 
 ### T4 — Document hook for Docker operators
 
@@ -224,11 +226,12 @@ Drafts are not execute-ready until the user explicitly approves Executable. Lock
 
 #### Reviewer checklist
 
-- [ ] Verify examples and ports/settings are Stationeers-specific and match implementation.
-- [ ] Verify no false claims about built-in save or RCON.
+- [x] Verify examples and ports/settings are Stationeers-specific and match implementation.
+- [x] Verify no false claims about built-in save or RCON.
 
 #### Agent log
 
 <!-- implementor / reviewer append below -->
 
 **Implementor — T4 — 2026-11-03.** Added **Pre-shutdown hook** section (flow, env/CLI precedence, `sh -c`, signal env, fd 3 / `SERVER_STDIN_FD`, script under `/data`, `docker stop -t 90`, Compose `stop_grace_period`); Run Server example adds optional `GAME_PRE_SHUTDOWN`. Verify: `git diff --check`. Commit **`213aaee`**.
+- **Reviewer (T4):** Approve on `213aaee`. Concrete `/data/pre-shutdown.sh`, `docker stop -t 90`, fd 3 automatic; no built-in save/RCON-on-shutdown. Residual: top Run Server block documents hook via env in prose only (not bracketed in first example).

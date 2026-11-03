@@ -552,22 +552,23 @@ Implementor, 2026-11-03. Added `readServerAuthSecret` / `resolveSettingXmlPath` 
 
 #### Reviewer checklist
 
-- [ ] The partial stdin bytes are present in the child input, not discarded.
-- [ ] SIGINT during an RCON submit does not call `kill` on the child.
-- [ ] Shutdown goes through console `quit\n`, not `proc.kill("SIGINT")`, matching today’s `handler.ts` comments for `stn-pty`.
-- [ ] This chunk does not edit `entrypoint.sh`, `command.ts`, or the R1–R7 modules except to import them. It does not implement `--pre-shutdown` (signal-hook T2).
+- [x] The partial stdin bytes are present in the child input, not discarded.
+- [x] SIGINT during an RCON submit does not call `kill` on the child.
+- [x] Shutdown goes through console `quit\n`, not `proc.kill("SIGINT")`, matching today’s `handler.ts` comments for `stn-pty`.
+- [x] This chunk does not edit `entrypoint.sh`, `command.ts`, or the R1–R7 modules except to import them. It does not implement `--pre-shutdown` (signal-hook T2).
 
 #### Agent log
 
 <!-- implementor / reviewer append below -->
 
 - **Coder (R9):** Parent stdin bridge (line-boundary wait + hold during RCON), exported `createConsoleQuitShutdown` with in-flight RCON wait before `quit\n`, handler tests C6/D6 (`rcon-console` fake). Verify: 92 `tsx --test` under `games/stationeers/tool`, `entrypoint_rcon_test.sh`, `tsc`, esbuild, `git diff --check`.
+- **Reviewer (R9):** Approve on `bf773e4`. C6/D6 prove partial stdin + separate `help\n`/`quit\n`; no helper/game signal files. Residual: T2 later extends `createConsoleQuitShutdown` with optional hook (expected).
 
 ---
 
 ### R10 — Document the flag, the port, and the password file
 
-**Status:** pending
+**Status:** approved
 
 **Depends on:** R9
 
@@ -585,12 +586,13 @@ Implementor, 2026-11-03. Added `readServerAuthSecret` / `resolveSettingXmlPath` 
 
 #### Reviewer checklist
 
-- [ ] Optional example parts are in square brackets, and every example value is concrete.
-- [ ] The password description matches B6 and B7, including the filename `setting.xml`.
-- [ ] The page does not say SIGINT sends an RCON `save`.
+- [x] Optional example parts are in square brackets, and every example value is concrete.
+- [x] The password description matches B6 and B7, including the filename `setting.xml`.
+- [x] The page does not say SIGINT sends an RCON `save`.
 
 #### Agent log
 
 <!-- implementor / reviewer append below -->
 
 - **Coder (R10):** Run Server example adds optional `-p 27500:27500/tcp` and `--rcon=27500`; new **Source RCON** section (port, protocol, `setting.xml` / `-settingspath`, reply framing, pre-shutdown pointer, no HTTP). Verify: `git diff --check`.
+- **Reviewer (R10):** Approve on `3a7f539`. Bracketed optional ports/flags; `setting.xml` / `-settingspath` match B6–B7; no autosave-on-SIGINT claims. Verified: `entrypoint_rcon_test.sh`, 92× `tsx --test`, `tsc`, esbuild, `git diff --check`.
