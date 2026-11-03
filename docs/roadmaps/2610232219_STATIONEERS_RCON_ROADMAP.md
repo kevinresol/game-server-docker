@@ -480,11 +480,11 @@ Implementor, 2026-11-03. Added `readServerAuthSecret` / `resolveSettingXmlPath` 
 
 #### Implementor checklist
 
-- [ ] Export an exchange that writes exactly the body plus one `\n`, passes that submitted line into the R5 framer, and reads the reply from a readable stream.
-- [ ] Queue overlapping submits so the second write starts only after the first reply has ended.
-- [ ] If the end prompt does not arrive within 30s, resolve with `console reply timed out` and do not write another line until a prompt has stayed 300ms. Further submits in that window return the same error and write nothing. The next successful body excludes bytes from the timed-out command.
-- [ ] If the readable stream ends first, resolve with `console closed`.
-- [ ] Unit-test C7, C9, and the closed-stream case with a fake clock and a fake stream. Do not listen on a TCP port.
+- [x] Export an exchange that writes exactly the body plus one `\n`, passes that submitted line into the R5 framer, and reads the reply from a readable stream.
+- [x] Queue overlapping submits so the second write starts only after the first reply has ended.
+- [x] If the end prompt does not arrive within 30s, resolve with `console reply timed out` and do not write another line until a prompt has stayed 300ms. Further submits in that window return the same error and write nothing. The next successful body excludes bytes from the timed-out command.
+- [x] If the readable stream ends first, resolve with `console closed`.
+- [x] Unit-test C7, C9, and the closed-stream case with a fake clock and a fake stream. Do not listen on a TCP port.
 
 #### Reviewer checklist
 
@@ -495,6 +495,8 @@ Implementor, 2026-11-03. Added `readServerAuthSecret` / `resolveSettingXmlPath` 
 #### Agent log
 
 <!-- implementor / reviewer append below -->
+
+**Implementor — R7 — 2026-11-03.** Added `exchange.ts` (`createConsoleExchange`, 30s timeout, post-timeout recovery via R5 framer, serialized command pump) and `exchange.test.ts` (C7, C9, closed stream). Verify: `pnpm exec tsx --test games/stationeers/tool/command/run/rcon/exchange.test.ts` (3 pass), `pnpm exec tsc --noEmit --pretty false`, `pnpm exec esbuild games/stationeers/tool/main.ts --bundle --platform=node --outfile=/tmp/stationeers-tool.js`, `git diff --check`.
 
 ---
 
