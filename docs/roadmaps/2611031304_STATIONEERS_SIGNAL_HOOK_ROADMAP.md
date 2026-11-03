@@ -120,7 +120,7 @@ Drafts are not execute-ready until the user explicitly approves Executable. Lock
 
 ### T1 — Expose `--pre-shutdown` on the run command
 
-**Status:** done
+**Status:** approved
 
 **Depends on:** R2 of `2610232219_STATIONEERS_RCON_ROADMAP.md` approved (or merged CLI work with R2—do not edit `command.ts` in parallel with R2)
 
@@ -134,14 +134,15 @@ Drafts are not execute-ready until the user explicitly approves Executable. Lock
 
 #### Reviewer checklist
 
-- [ ] Confirm option naming, env fallback, and precedence match Decisions and existing CLI conventions.
-- [ ] Confirm no hook execution or signal-handler changes are smuggled into this CLI-only chunk.
+- [x] Confirm option naming, env fallback, and precedence match Decisions and existing CLI conventions.
+- [x] Confirm no hook execution or signal-handler changes are smuggled into this CLI-only chunk.
 
 #### Agent log
 
 <!-- implementor / reviewer append below -->
 
 **Implementor — T1 — 2026-11-03.** Added `--pre-shutdown` / `GAME_PRE_SHUTDOWN` on `run` (same fallback pattern as `--log-file`). Extended handler `Args` with `preShutdown` and `void` wiring only; no signal/hook behavior. Updated `run` meta: SIGTERM/SIGINT → console `quit`, optional pre-shutdown mention (no autosave claims). Verify: esbuild OK, `git diff --check` OK; `tsc` blocked by untracked WIP `rcon/server.ts` syntax error (out of T1 scope).
+- **Reviewer (T1):** Approve (implementation commit `bb7b69e`). `--pre-shutdown` / `GAME_PRE_SHUTDOWN` mirrors `--log-file`; handler keeps `void preShutdown` with unchanged SIGTERM/SIGINT `quit\n` handlers. Verified: `command.test.ts`, `tsc`, esbuild, `entrypoint_rcon_test.sh`, `git diff --check`. Residual: no env-fallback unit test (same gap as `--log-file`).
 
 ---
 

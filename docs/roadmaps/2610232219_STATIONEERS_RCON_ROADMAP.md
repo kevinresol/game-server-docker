@@ -441,7 +441,7 @@ Implementor, 2026-11-03. Added `readServerAuthSecret` / `resolveSettingXmlPath` 
 
 ### R6 — Accept Source RCON connections
 
-**Status:** in_progress
+**Status:** approved
 
 **Depends on:** R4
 
@@ -458,21 +458,22 @@ Implementor, 2026-11-03. Added `readServerAuthSecret` / `resolveSettingXmlPath` 
 
 #### Reviewer checklist
 
-- [ ] A wrong secret and a missing file never call execute.
-- [ ] The server does not parse ANSI or write to a child process.
-- [ ] Logs from these tests do not contain the secret string.
+- [x] A wrong secret and a missing file never call execute.
+- [x] The server does not parse ANSI or write to a child process.
+- [x] Logs from these tests do not contain the secret string.
 
 #### Agent log
 
 <!-- implementor / reviewer append below -->
 
 - **Coder (R6):** Added `createRconServer` in `server.ts` (TCP on `0.0.0.0`, injectable `readSecret`/`execute`, stream buffering, auth/exec/marker handling; no `secret.ts` import) and `server.test.ts` (D1–D5, D7–D9 plus newline rejection and secret-not-in-logs). Verify: `pnpm exec tsx --test games/stationeers/tool/command/run/rcon/server.test.ts` (11 pass), `pnpm exec tsc --noEmit --pretty false`, esbuild bundle to `/tmp/stationeers-tool.js`, `git diff --check`.
+- **Reviewer (R6):** Approve. D2, missing `readSecret`, and newline rejection never call `execute`; codec-only TCP layer per architecture lane. Verified: `server.test.ts` (11 pass), `command.test.ts`, `exchange.test.ts`, `entrypoint_rcon_test.sh`, `tsc`, esbuild, `git diff --check`. Residual: invalid post-auth packets destroy the socket without a response (fail-closed).
 
 ---
 
 ### R7 — Submit one console line and wait for the reply
 
-**Status:** pending
+**Status:** approved
 
 **Depends on:** R5
 
@@ -488,15 +489,16 @@ Implementor, 2026-11-03. Added `readServerAuthSecret` / `resolveSettingXmlPath` 
 
 #### Reviewer checklist
 
-- [ ] Two overlapping submits produce two writes, in order, each the command text followed by a single newline.
-- [ ] A timed-out exchange does not write the second command.
-- [ ] The module does not import `handler.ts` or the TCP server.
+- [x] Two overlapping submits produce two writes, in order, each the command text followed by a single newline.
+- [x] A timed-out exchange does not write the second command.
+- [x] The module does not import `handler.ts` or the TCP server.
 
 #### Agent log
 
 <!-- implementor / reviewer append below -->
 
 **Implementor — R7 — 2026-11-03.** Added `exchange.ts` (`createConsoleExchange`, 30s timeout, post-timeout recovery via R5 framer, serialized command pump) and `exchange.test.ts` (C7, C9, closed stream). Verify: `pnpm exec tsx --test games/stationeers/tool/command/run/rcon/exchange.test.ts` (3 pass), `pnpm exec tsc --noEmit --pretty false`, `pnpm exec esbuild games/stationeers/tool/main.ts --bundle --platform=node --outfile=/tmp/stationeers-tool.js`, `git diff --check`.
+- **Reviewer (R7):** Approve. C7/C9 prove serialized writes and timeout gate; imports only `./framer`. Verified: same verification bundle as R6 reviewer run. Residual: recovery consumes stdout via an internal framer token only (no extra console write).
 
 ---
 
