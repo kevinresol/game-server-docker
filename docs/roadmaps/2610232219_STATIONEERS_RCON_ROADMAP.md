@@ -504,7 +504,7 @@ Implementor, 2026-11-03. Added `readServerAuthSecret` / `resolveSettingXmlPath` 
 
 ### R8 — Bind RCON without changing the console bytes
 
-**Status:** pending
+**Status:** approved
 
 **Depends on:** R2, R3, R6, R7
 
@@ -512,11 +512,11 @@ Implementor, 2026-11-03. Added `readServerAuthSecret` / `resolveSettingXmlPath` 
 
 #### Implementor checklist
 
-- [ ] When the parsed option is off, do not listen (A1), and keep the current stdin pipe, stdout tee, and signal behavior.
-- [ ] When the option is on, bind the R6 server on the parsed port before spawning the game. `--rcon=27015` listens on 27015 and not on 27500 (A4). If the bind throws, do not spawn (A7).
-- [ ] Supply `readSecret` by closing over the R3 reader with the install directory and the forwarded game arguments. Do not copy path rules into the TCP server.
-- [ ] Tap the same stdout bytes that `forwardStdout` writes, without dropping, reordering, or holding them for the 300ms prompt timer. Stderr stays on stderr and out of the reply.
-- [ ] Extend `handler.test.ts` for A1, A2's listen address, A4, A5, A7, and C5's unchanged stdout bytes, using the existing fake `stn-pty`. Do not require a live Stationeers server.
+- [x] When the parsed option is off, do not listen (A1), and keep the current stdin pipe, stdout tee, and signal behavior.
+- [x] When the option is on, bind the R6 server on the parsed port before spawning the game. `--rcon=27015` listens on 27015 and not on 27500 (A4). If the bind throws, do not spawn (A7).
+- [x] Supply `readSecret` by closing over the R3 reader with the install directory and the forwarded game arguments. Do not copy path rules into the TCP server.
+- [x] Tap the same stdout bytes that `forwardStdout` writes, without dropping, reordering, or holding them for the 300ms prompt timer. Stderr stays on stderr and out of the reply.
+- [x] Extend `handler.test.ts` for A1, A2's listen address, A4, A5, A7, and C5's unchanged stdout bytes, using the existing fake `stn-pty`. Do not require a live Stationeers server.
 
 #### Reviewer checklist
 
@@ -529,6 +529,8 @@ Implementor, 2026-11-03. Added `readServerAuthSecret` / `resolveSettingXmlPath` 
 #### Agent log
 
 <!-- implementor / reviewer append below -->
+
+- **Coder (R8):** Wired `--rcon` in `handler.ts`: bind R6 before spawn, `readSecret` closure over R3, stdout tap to exchange + unchanged `forwardStdout` tee; extended `handler.test.ts` (A1, A2, A4, A5, A7, C5). No R9 stdin arbitration. Verify: all `games/stationeers` unit tests (90 pass), `tsc`, esbuild bundle, `git diff --check`.
 
 ---
 

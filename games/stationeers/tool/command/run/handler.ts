@@ -3,6 +3,10 @@ import { spawn } from "node:child_process";
 import { appendFile } from "node:fs/promises";
 import fs from "node:fs";
 import { Readable } from "node:stream";
+import { RCON_DEFAULT_PORT, validateRconOptionValue } from "./command";
+import { createConsoleExchange } from "./rcon/exchange";
+import { createRconServer, type RconServerHandle } from "./rcon/server";
+import { readServerAuthSecret } from "./rcon/secret";
 import { startPlayerLog } from "./playerlog";
 
 const DEFAULT_PTY_BIN = "/home/steam/shim/stn-pty";
@@ -12,7 +16,33 @@ type Args = {
 	binPath: string;
 	logFile?: string;
 	preShutdown?: string;
+	rcon?: string;
 };
+
+function resolveRconPort(rcon: string | undefined): number | undefined {
+	if (rcon === undefined) {
+		return undefined;
+	}
+	const validation = validateRconOptionValue(rcon);
+	if (validation !== true) {
+		throw new Error(validation);
+	}
+	return rcon === "" ? RCON_DEFAULT_PORT : Number(rcon);
+}
+
+function readSecretForRcon(installDir: string, gameArgs: readonly string[]) {
+	const result = readServerAuthSecret(installDir, gameArgs, (filePath) => {
+		try {
+			return fs.readFileSync(filePath, "utf8");
+		} catch {
+			return undefined;
+		}
+	});
+	if (result.ok) {
+		return { ok: true as const, secret: result.secret };
+	}
+	return { ok: false as const };
+}
 
 // Prepend the shim unless it is already one of the colon-separated paths.
 // The copy is passed only to the spawned stn-pty process.
@@ -24,10 +54,11 @@ function ldPreloadForChild(existing: string | undefined): string {
 }
 
 export default async function ({
-	args: { binPath, logFile, preShutdown, "--": forwarded },
+	args: { binPath, logFile, preShutdown, rcon, "--": forwarded },
 }: HandlerInput<Args>) {
 	void preShutdown;
 	const gameArgs = [...(forwarded ?? [])];
+	const rconPort = resolveRconPort(rcon);
 	if (gameArgs.some((arg) => arg.toLowerCase() === "-logfile")) {
 		throw new Error(
 			"Do not specify -logfile manually in the rest arguments, use the --log-file flag or GAME_LOG_FILE env var instead.",
@@ -39,6 +70,27 @@ export default async function ({
 
 	if (logFile) {
 		await appendFile(logFile, ""); // make sure the log file exists; output is appended later
+	}
+
+	let rconServer: RconServerHandle | undefined;
+	let consoleExchange: ReturnType<typeof createConsoleExchange> | undefined;
+	if (rconPort !== undefined) {
+		const readSecret = () => readSecretForRcon(binPath, gameArgs);
+		try {
+			rconServer = await createRconServer({
+				port: rconPort,
+				readSecret,
+				execute: (body) => {
+					if (!consoleExchange) {
+						throw new Error("RCON console exchange is not ready");
+					}
+					return consoleExchange.submit(body);
+				},
+			});
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			throw new Error(`Failed to bind RCON on port ${rconPort}: ${message}`);
+		}
 	}
 
 	const ptyBin = process.env.STN_PTY_BIN ?? DEFAULT_PTY_BIN;
@@ -77,6 +129,18 @@ export default async function ({
 	process.on("SIGTERM", sendQuit);
 	process.on("SIGINT", sendQuit);
 
+	if (rconServer) {
+		consoleExchange = createConsoleExchange({
+			stdout: childOut,
+			write: (lineWithNewline) => {
+				if (childIn.destroyed || childIn.writableEnded) return;
+				childIn.write(lineWithNewline, (error) => {
+					if (error) onChildStdinError(error);
+				});
+			},
+		});
+	}
+
 	// One write path. A byte is appended to --log-file only from the stdout
 	// write callback, so a chunk process.stdout has not accepted cannot land
 	// in the file first. Stderr is not part of that path. No CR or escape stripping.
@@ -94,7 +158,10 @@ export default async function ({
 			parentIn.unpipe(childIn);
 			parentIn.pause();
 			playerLog.stop();
-			void stdoutFlush.then(() => {
+			const rconClose = rconServer?.close().catch((error) => {
+				console.error(`Failed to close RCON server: ${error}`);
+			});
+			void Promise.all([stdoutFlush, rconClose]).then(() => {
 				console.log("Server process exited with code: ", code);
 
 				try {

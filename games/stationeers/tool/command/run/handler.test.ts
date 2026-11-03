@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { ChildProcess } from "node:child_process";
 import fs from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { PassThrough, Readable } from "node:stream";
 import { describe, test } from "node:test";
+import { RCON_DEFAULT_PORT } from "./command";
 import handler from "./handler";
 
 // C2 rule: identical bytes. Helper stdout is written to process.stdout and, when
@@ -68,6 +70,33 @@ function swapStdin(stream: Readable): () => void {
 	});
 	return () => {
 		if (descriptor) Object.defineProperty(process, "stdin", descriptor);
+	};
+}
+
+function tcpConnect(port: number, host = "127.0.0.1"): Promise<net.Socket> {
+	return new Promise((resolve, reject) => {
+		const socket = net.connect({ port, host }, () => resolve(socket));
+		socket.once("error", reject);
+	});
+}
+
+function captureListenHost(): { hosts: string[]; restore: () => void } {
+	const hosts: string[] = [];
+	const original = net.Server.prototype.listen;
+	net.Server.prototype.listen = function (
+		this: net.Server,
+		...args: unknown[]
+	): net.Server {
+		if (typeof args[1] === "string") {
+			hosts.push(args[1]);
+		}
+		return original.apply(this, args as Parameters<typeof original>);
+	} as typeof net.Server.prototype.listen;
+	return {
+		hosts,
+		restore() {
+			net.Server.prototype.listen = original;
+		},
 	};
 }
 
@@ -212,6 +241,7 @@ function tapStdioPipes(acceptStdout?: (chunk: Buffer, index: number) => boolean)
 
 function startRun(options: {
 	args?: string[];
+	rcon?: string;
 	useLogFile?: boolean;
 	mode: "exit" | "output" | "output-wait" | "output-split" | "wait" | "signal" | "stdin";
 	exitCode?: number;
@@ -404,6 +434,7 @@ child.on("close", (code) => process.exit(code === null ? 1 : code));
 		args: {
 			binPath,
 			logFile,
+			rcon: options.rcon,
 			"--": options.args ?? [],
 			_: [],
 		},
@@ -785,6 +816,184 @@ describe("stationeers run handler", { concurrency: false }, () => {
 			for (const listener of runnerInt) {
 				if (!process.listeners("SIGINT").includes(listener)) process.on("SIGINT", listener);
 			}
+		}
+	});
+
+	test("A1 — without --rcon nothing listens on the default RCON port", async () => {
+		const run = startRun({ mode: "wait" });
+		try {
+			await waitFor(() => fs.existsSync(run.readyPath), "helper readiness");
+			await assert.rejects(
+				() => tcpConnect(RCON_DEFAULT_PORT),
+				(err: unknown) => {
+					assert.ok(err instanceof Error);
+					assert.match(err.message, /ECONNREFUSED/);
+					return true;
+				},
+			);
+			run.releaseWait();
+			await run.result;
+		} finally {
+			await run.cleanup();
+		}
+	});
+
+	test("A2 — bare --rcon listens on 0.0.0.0 and the default port", async () => {
+		const listen = captureListenHost();
+		const run = startRun({ mode: "wait", rcon: "" });
+		let socket: net.Socket | undefined;
+		try {
+			await waitFor(() => fs.existsSync(run.readyPath), "helper readiness");
+			assert.deepEqual(listen.hosts, ["0.0.0.0"]);
+			socket = await tcpConnect(RCON_DEFAULT_PORT);
+			socket.destroy();
+			socket = undefined;
+			run.releaseWait();
+			await run.result;
+		} finally {
+			socket?.destroy();
+			listen.restore();
+			await run.cleanup();
+		}
+	});
+
+	test("A4 — --rcon=27015 listens on 27015 and not on 27500", async () => {
+		const run = startRun({ mode: "wait", rcon: "27015" });
+		let socket: net.Socket | undefined;
+		try {
+			await waitFor(() => fs.existsSync(run.readyPath), "helper readiness");
+			socket = await tcpConnect(27015);
+			socket.destroy();
+			socket = undefined;
+			await assert.rejects(
+				() => tcpConnect(RCON_DEFAULT_PORT),
+				(err: unknown) => {
+					assert.ok(err instanceof Error);
+					assert.match(err.message, /ECONNREFUSED/);
+					return true;
+				},
+			);
+			run.releaseWait();
+			await run.result;
+		} finally {
+			socket?.destroy();
+			await run.cleanup();
+		}
+	});
+
+	test("A5 — invalid --rcon values do not start the helper or bind RCON", async () => {
+		for (const port of ["0", "99999", "abc", "01"]) {
+			const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stn-rcon-a5-"));
+			const helperPath = path.join(dir, "stn-pty");
+			const reportPath = path.join(dir, "report.json");
+			writeExecutable(
+				helperPath,
+				`require("node:fs").writeFileSync(process.env.STN_FAKE_REPORT, "started");\n`,
+			);
+			const previousPty = process.env.STN_PTY_BIN;
+			const previousReport = process.env.STN_FAKE_REPORT;
+			process.env.STN_PTY_BIN = helperPath;
+			process.env.STN_FAKE_REPORT = reportPath;
+			try {
+				await assert.rejects(
+					() =>
+						handler({
+							args: {
+								binPath: path.join(dir, "game"),
+								rcon: port,
+								"--": [],
+								_: [],
+							},
+							argv: [],
+							logger: undefined as never,
+							prompter: undefined as never,
+						}),
+					(error: unknown) => {
+						assert.ok(error instanceof Error);
+						return true;
+					},
+				);
+				assert.equal(fs.existsSync(reportPath), false);
+				await assert.rejects(
+					() => tcpConnect(RCON_DEFAULT_PORT),
+					(err: unknown) => {
+						assert.ok(err instanceof Error);
+						assert.match(err.message, /ECONNREFUSED/);
+						return true;
+					},
+				);
+			} finally {
+				if (previousPty === undefined) delete process.env.STN_PTY_BIN;
+				else process.env.STN_PTY_BIN = previousPty;
+				if (previousReport === undefined) delete process.env.STN_FAKE_REPORT;
+				else process.env.STN_FAKE_REPORT = previousReport;
+				fs.rmSync(dir, { recursive: true, force: true });
+			}
+		}
+	});
+
+	test("A7 — RCON bind failure does not start the helper", async () => {
+		const blocker = await new Promise<net.Server>((resolve, reject) => {
+			const server = net.createServer();
+			server.once("error", reject);
+			server.listen(RCON_DEFAULT_PORT, "0.0.0.0", () => resolve(server));
+		});
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stn-rcon-a7-"));
+		const helperPath = path.join(dir, "stn-pty");
+		const reportPath = path.join(dir, "report.json");
+		writeExecutable(
+			helperPath,
+			`require("node:fs").writeFileSync(process.env.STN_FAKE_REPORT, "started");\n`,
+		);
+		const previousPty = process.env.STN_PTY_BIN;
+		const previousReport = process.env.STN_FAKE_REPORT;
+		process.env.STN_PTY_BIN = helperPath;
+		process.env.STN_FAKE_REPORT = reportPath;
+		try {
+			await assert.rejects(
+				() =>
+					handler({
+						args: {
+							binPath: path.join(dir, "game"),
+							rcon: "",
+							"--": [],
+							_: [],
+						},
+						argv: [],
+						logger: undefined as never,
+						prompter: undefined as never,
+					}),
+				(error: unknown) => {
+					assert.ok(error instanceof Error);
+					assert.match(error.message, /Failed to bind RCON/);
+					return true;
+				},
+			);
+			assert.equal(fs.existsSync(reportPath), false);
+		} finally {
+			await new Promise<void>((resolve, reject) => {
+				blocker.close((err) => (err ? reject(err) : resolve()));
+			});
+			if (previousPty === undefined) delete process.env.STN_PTY_BIN;
+			else process.env.STN_PTY_BIN = previousPty;
+			if (previousReport === undefined) delete process.env.STN_FAKE_REPORT;
+			else process.env.STN_FAKE_REPORT = previousReport;
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	test("C5 — with --rcon enabled helper stdout bytes are unchanged on container stdout", async () => {
+		const run = startRun({
+			mode: "output",
+			payload: PAYLOAD,
+			rcon: "",
+		});
+		try {
+			await run.result;
+			assert.deepEqual(run.stdout(), PAYLOAD);
+			assert.deepEqual(run.stderr(), DIAGNOSTIC);
+		} finally {
+			await run.cleanup();
 		}
 	});
 
