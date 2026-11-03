@@ -520,17 +520,18 @@ Implementor, 2026-11-03. Added `readServerAuthSecret` / `resolveSettingXmlPath` 
 
 #### Reviewer checklist
 
-- [ ] `--log-file` still receives only bytes that stdout has accepted, and still omits stderr.
-- [ ] A failed bind does not spawn `stn-pty`.
-- [ ] Flag absent does not listen, and port 27015 does not also listen on 27500.
-- [ ] This chunk does not edit `entrypoint.sh`, `command.ts`, or the R1–R7 modules except to import them.
-- [ ] Stdin arbitration and the in-flight `quit` line are left to R9.
+- [x] `--log-file` still receives only bytes that stdout has accepted, and still omits stderr.
+- [x] A failed bind does not spawn `stn-pty`.
+- [x] Flag absent does not listen, and port 27015 does not also listen on 27500.
+- [x] This chunk does not edit `entrypoint.sh`, `command.ts`, or the R1–R7 modules except to import them.
+- [x] Stdin arbitration and the in-flight `quit` line are left to R9.
 
 #### Agent log
 
 <!-- implementor / reviewer append below -->
 
 - **Coder (R8):** Wired `--rcon` in `handler.ts`: bind R6 before spawn, `readSecret` closure over R3, stdout tap to exchange + unchanged `forwardStdout` tee; extended `handler.test.ts` (A1, A2, A4, A5, A7, C5). No R9 stdin arbitration. Verify: all `games/stationeers` unit tests (90 pass), `tsc`, esbuild bundle, `git diff --check`.
+- **Reviewer (R8):** Approve on `02af661`. Bind precedes spawn; `forwardStdout` unchanged; exchange taps stdout via `data` listeners only. No partial-stdin hold, shared shutdown export, or D6 ordering (R9). Verified: `handler.test.ts` + all `rcon/*.test.ts` (76 pass), `tsc`, esbuild, `git diff --check`. Residual: `--log-file` tee with `--rcon` not covered by a dedicated test (pre-R8 log tests still pass unchanged).
 
 ---
 
