@@ -56,6 +56,18 @@ ENV GAME_BIN_PATH="/home/steam/Steam/steamapps/common/StationeersDedicatedServer
 ENV GAME_DATA_PATH="/data"
 ENV GAME_LOG_FILE="/home/steam/stationeers.log"
 
+# client-download.steampowered.com CNAMEs to update.client.steamcontent.akadns.net,
+# which currently has no IPv4 A record. SteamCMD requests A records only.
+USER root
+RUN set -eu; \
+	echo "steamcmd DNS diag: ipv6_disable=$(cat /proc/sys/net/ipv6/conf/all/disable_ipv6)"; \
+	echo "steamcmd DNS diag: client-download A=$(getent ahostsv4 client-download.steampowered.com | awk 'NF && $1 ~ /^[0-9.]+$/ {print $1; exit}' || true)"; \
+	IP="$(getent ahostsv4 media.steampowered.com | awk 'NF && $1 ~ /^[0-9.]+$/ {print $1; exit}')"; \
+	test -n "$IP"; \
+	printf '%s\tclient-download.steampowered.com\n' "$IP" >> /etc/hosts; \
+	echo "steamcmd DNS diag: mapped client-download -> ${IP}"
+USER steam
+
 # install game
 RUN ./steamcmd.sh \
 	+force_install_dir ${GAME_BIN_PATH} \
