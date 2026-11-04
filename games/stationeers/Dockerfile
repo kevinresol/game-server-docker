@@ -59,12 +59,11 @@ ENV GAME_LOG_FILE="/home/steam/stationeers.log"
 USER root
 RUN set -eu; \
 	echo "steamcmd preflight: ipv6_disable=$(cat /proc/sys/net/ipv6/conf/all/disable_ipv6)"; \
-	echo 1 > /proc/sys/net/ipv6/conf/all/disable_ipv6; \
-	echo "steamcmd preflight: ipv6_disable_after=$(cat /proc/sys/net/ipv6/conf/all/disable_ipv6)"; \
 	echo "steamcmd preflight: client-download=$(getent ahostsv4 client-download.steampowered.com | awk 'NF && $1 ~ /^[0-9.]+$/ {print $1; exit}' || echo none)"; \
 	echo "steamcmd preflight: media=$(getent ahostsv4 media.steampowered.com | awk 'NF && $1 ~ /^[0-9.]+$/ {print $1; exit}' || echo none)"; \
 	curl -sf --max-time 15 http://media.steampowered.com/client/steam_cmd_linux | head -1
 USER steam
+RUN ./steamcmd.sh +quit
 
 # install game
 RUN ./steamcmd.sh \
