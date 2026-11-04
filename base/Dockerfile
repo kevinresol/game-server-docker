@@ -13,10 +13,4 @@ RUN apt-get install -qqy nodejs ${PACKAGES} \
 	&& apt-get autoremove -qqy \
 	&& rm -rf /var/lib/apt/lists/*
 
-# client-download.steampowered.com currently has no IPv4 A record; SteamCMD needs one.
-RUN set -eu; \
-	IP="$(getent ahostsv4 media.steampowered.com | awk 'NF && $1 ~ /^[0-9.]+$/ {print $1; exit}')"; \
-	test -n "$IP"; \
-	printf '%s\tclient-download.steampowered.com\n' "$IP" >> /etc/hosts
-
 USER steam

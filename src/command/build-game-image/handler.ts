@@ -8,6 +8,7 @@ import { buildGameTool } from "../build-game-tool/handler";
 import { listDockerTags } from "../list-docker-tags/handler";
 import { listSteamBranches } from "../list-steam-branches/handler";
 import { spawn } from "node:child_process";
+import { lookup } from "node:dns/promises";
 
 type Args = {
 	game?: string;
@@ -157,11 +158,13 @@ async function buildAndPushImage(args: {
 	const images = args.tags.map((tag) => `${args.repository}:${tag}`);
 
 	console.log(`== Building images: ${images.join(", ")}`);
+	const steamClientDownloadHost = await getSteamClientDownloadHostArg();
 	// await shell("df", ["-h"]);
 	await shell("docker", [
 		"build",
 		"--platform=linux/amd64",
 		...(args.push ? ["--push"] : []),
+		...steamClientDownloadHost,
 		...images.map((image) => `--tag=${image}`),
 		...Object.entries(args.args).map(
 			([key, value]) => `--build-arg=${key}=${value}`
@@ -194,4 +197,36 @@ async function getGitSha() {
 		proc.stdout.on("end", () => resolve(data.trim()));
 		proc.stdout.on("error", reject);
 	});
+}
+
+/** SteamCMD only requests A records for client-download.steampowered.com, which may be empty. */
+async function getSteamClientDownloadHostArg(): Promise<string[]> {
+	const host = "client-download.steampowered.com";
+	let clientDownloadV4: string | undefined;
+	try {
+		({ address: clientDownloadV4 } = await lookup(host, { family: 4 }));
+	} catch {
+		// Expected while client-download CNAMEs to akadns without an A record.
+	}
+
+	let mediaV4: string;
+	try {
+		({ address: mediaV4 } = await lookup("media.steampowered.com", {
+			family: 4,
+		}));
+	} catch (e) {
+		console.warn(
+			`== SteamCMD DNS: could not resolve media.steampowered.com for ${host} workaround:`,
+			e
+		);
+		return [];
+	}
+
+	const mapped = clientDownloadV4 ?? mediaV4;
+	console.log(
+		`== SteamCMD DNS: ${host} A=${clientDownloadV4 ?? "(none)"}; ` +
+			`mapping build add-host ${host} -> ${mapped} ` +
+			`(from ${clientDownloadV4 ? host : "media.steampowered.com"})`
+	);
+	return [`--add-host=${host}:${mapped}`];
 }
