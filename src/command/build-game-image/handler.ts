@@ -163,6 +163,7 @@ async function buildAndPushImage(args: {
 	await shell("docker", [
 		"build",
 		"--platform=linux/amd64",
+		...(isCI ? ["--network=host"] : []),
 		...(args.push ? ["--push"] : []),
 		...steamClientDownloadHost,
 		...images.map((image) => `--tag=${image}`),
@@ -228,5 +229,8 @@ async function getSteamClientDownloadHostArg(): Promise<string[]> {
 			`mapping build add-host ${host} -> ${mapped} ` +
 			`(from ${clientDownloadV4 ? host : "media.steampowered.com"})`
 	);
-	return [`--add-host=${host}:${mapped}`];
+	return [
+		`--add-host=${host}:${mapped}`,
+		`--add-host=update.client.steamcontent.akadns.net:${mapped}`,
+	];
 }
