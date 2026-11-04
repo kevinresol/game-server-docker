@@ -159,6 +159,9 @@ async function buildAndPushImage(args: {
 
 	console.log(`== Building images: ${images.join(", ")}`);
 	await logSteamCmdDnsDiag();
+	if (isCI) {
+		await probeSteamCmdOnRunner();
+	}
 	// await shell("df", ["-h"]);
 	await shell("docker", [
 		"build",
@@ -221,4 +224,23 @@ async function logSteamCmdDnsDiag() {
 			`media.steampowered.com A=${mediaV4 ?? "(none)"}; ` +
 			`docker build network=${isCI ? "host" : "default"}`
 	);
+}
+
+async function probeSteamCmdOnRunner() {
+	console.log("== SteamCMD probe: docker run --network=host steamcmd +quit");
+	try {
+		await shell("docker", [
+			"run",
+			"--rm",
+			"--network=host",
+			"--platform=linux/amd64",
+			"kevinresol/base-dedicated-server:latest",
+			"bash",
+			"-lc",
+			"curl -sf --max-time 15 http://media.steampowered.com/client/steam_cmd_linux | head -1; ./steamcmd.sh +quit",
+		]);
+		console.log("== SteamCMD probe: success");
+	} catch (e) {
+		console.warn("== SteamCMD probe: failed", e);
+	}
 }
