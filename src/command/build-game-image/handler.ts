@@ -158,14 +158,13 @@ async function buildAndPushImage(args: {
 	const images = args.tags.map((tag) => `${args.repository}:${tag}`);
 
 	console.log(`== Building images: ${images.join(", ")}`);
-	const steamClientDownloadHost = await getSteamClientDownloadHostArg();
+	await logSteamCmdDnsDiag();
 	// await shell("df", ["-h"]);
 	await shell("docker", [
 		"build",
 		"--platform=linux/amd64",
 		...(isCI ? ["--network=host"] : []),
 		...(args.push ? ["--push"] : []),
-		...steamClientDownloadHost,
 		...images.map((image) => `--tag=${image}`),
 		...Object.entries(args.args).map(
 			([key, value]) => `--build-arg=${key}=${value}`
@@ -201,7 +200,7 @@ async function getGitSha() {
 }
 
 /** SteamCMD only requests A records for client-download.steampowered.com, which may be empty. */
-async function getSteamClientDownloadHostArg(): Promise<string[]> {
+async function logSteamCmdDnsDiag() {
 	const host = "client-download.steampowered.com";
 	let clientDownloadV4: string | undefined;
 	try {
@@ -210,27 +209,16 @@ async function getSteamClientDownloadHostArg(): Promise<string[]> {
 		// Expected while client-download CNAMEs to akadns without an A record.
 	}
 
-	let mediaV4: string;
+	let mediaV4: string | undefined;
 	try {
-		({ address: mediaV4 } = await lookup("media.steampowered.com", {
-			family: 4,
-		}));
-	} catch (e) {
-		console.warn(
-			`== SteamCMD DNS: could not resolve media.steampowered.com for ${host} workaround:`,
-			e
-		);
-		return [];
+		({ address: mediaV4 } = await lookup("media.steampowered.com", { family: 4 }));
+	} catch {
+		// Logged below with mediaV4 undefined.
 	}
 
-	const mapped = clientDownloadV4 ?? mediaV4;
 	console.log(
 		`== SteamCMD DNS: ${host} A=${clientDownloadV4 ?? "(none)"}; ` +
-			`mapping build add-host ${host} -> ${mapped} ` +
-			`(from ${clientDownloadV4 ? host : "media.steampowered.com"})`
+			`media.steampowered.com A=${mediaV4 ?? "(none)"}; ` +
+			`docker build network=${isCI ? "host" : "default"}`
 	);
-	return [
-		`--add-host=${host}:${mapped}`,
-		`--add-host=update.client.steamcontent.akadns.net:${mapped}`,
-	];
 }
