@@ -13,13 +13,20 @@ ENV GAME_LOG_FILE="/home/steam/stationeers.log"
 # install game
 RUN set -eu; \
 	for attempt in 1 2 3 4 5; do \
+		set +e; \
 		./steamcmd.sh \
 			+force_install_dir "${GAME_BIN_PATH}" \
 			+login anonymous \
 			+app_update 600760 -beta "${BRANCH}" validate \
-			+logoff +quit || true; \
-		if [ -f /home/steam/Steam/steamapps/appmanifest_600760.acf ]; then break; fi; \
-		echo "steamcmd app_update failed (attempt ${attempt}), retrying..." >&2; \
+			+logoff +quit; \
+		rc=$?; \
+		set -e; \
+		if [ "$rc" -eq 0 ] \
+			|| [ -f /home/steam/Steam/steamapps/appmanifest_600760.acf ] \
+			|| [ -f "${GAME_BIN_PATH}/rocketstation_DedicatedServer.x86_64" ]; then \
+			break; \
+		fi; \
+		echo "Stationeers app 600760 not verified after steamcmd (exit ${rc}); retrying (attempt ${attempt})..." >&2; \
 		[ "${attempt}" -eq 5 ] && exit 1; \
 		sleep $((attempt * 30)); \
 	done
