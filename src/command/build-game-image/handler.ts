@@ -1,6 +1,6 @@
 import { getAllGames, getGamePath, isCI, shell } from "@/common";
 import { HandlerInput, UsageError } from "@why-ts/cli";
-import { readFile, rm, mkdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { match } from "ts-pattern";
 import { z } from "zod";
@@ -130,24 +130,12 @@ async function build({
 				console.log(`== Building ${game}: ${tags.join(", ")}`);
 				await buildGameTool(game);
 
-				const buildArgs: Record<string, string> = {
-					BRANCH: branch,
-					GIT_SHA: gitSha,
-				};
-				if (isCI && game === "stationeers") {
-					await prefetchStationeersSteamOnRunner({
-						context: getGamePath(game),
-						branch,
-					});
-					buildArgs.STEAM_PREFETCH = "1";
-				}
-
 				await buildAndPushImage({
 					dockerfile: getGamePath(game, "Dockerfile"),
 					context: getGamePath(game),
 					repository,
 					tags,
-					args: buildArgs,
+					args: { BRANCH: branch, GIT_SHA: gitSha },
 					push,
 				});
 			}
@@ -236,59 +224,6 @@ async function logSteamCmdDnsDiag() {
 			`media.steampowered.com A=${mediaV4 ?? "(none)"}; ` +
 			`docker build network=${isCI ? "host" : "default"}`
 	);
-}
-
-async function prefetchStationeersSteamOnRunner({
-	context,
-	branch,
-}: {
-	context: string;
-	branch: string;
-}) {
-	const steamMount = path.resolve(context, ".ci-steam", "Steam");
-	const installDir =
-		"/home/steam/Steam/steamapps/common/StationeersDedicatedServer";
-	await rm(steamMount, { recursive: true, force: true });
-	await mkdir(steamMount, { recursive: true });
-
-	console.log(
-		`== Steam prefetch: docker run --network=host app 600760 branch ${branch}`
-	);
-	const container = `stationeers-steam-prefetch-${process.pid}`;
-	const script = [
-		"set -eu",
-		"for attempt in 1 2 3 4 5; do",
-		"  rm -rf /home/steam/Steam/*",
-		`  ./steamcmd.sh +force_install_dir ${installDir} +login anonymous +app_update 600760 -beta ${branch} validate +logoff +quit || true`,
-		`  if [ -f /home/steam/Steam/steamapps/appmanifest_600760.acf ]; then exit 0; fi`,
-		`  if [ -d "${installDir}" ] && ls -A "${installDir}" >/dev/null 2>&1; then exit 0; fi`,
-		'  echo "steamcmd app_update failed (attempt $attempt), retrying..." >&2',
-		'  [ "$attempt" -eq 5 ] && exit 1',
-		"  sleep $((attempt * 30))",
-		"done",
-	].join("\n");
-
-	try {
-		await shell("docker", [
-			"run",
-			"--name",
-			container,
-			"--network=host",
-			"--platform=linux/amd64",
-			"kevinresol/base-dedicated-server:latest",
-			"bash",
-			"-lc",
-			script,
-		]);
-		await shell("docker", [
-			"cp",
-			`${container}:/home/steam/Steam/.`,
-			steamMount,
-		]);
-	} finally {
-		await shell("docker", ["rm", "-f", container]);
-	}
-	console.log("== Steam prefetch: success");
 }
 
 async function probeSteamCmdOnRunner() {
