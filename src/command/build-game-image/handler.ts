@@ -248,18 +248,17 @@ async function prefetchStationeersSteamOnRunner({
 	const steamMount = path.resolve(context, ".ci-steam", "Steam");
 	const installDir =
 		"/home/steam/Steam/steamapps/common/StationeersDedicatedServer";
-	await rm(path.resolve(context, ".ci-steam", "Steam"), {
-		recursive: true,
-		force: true,
-	});
+	await rm(steamMount, { recursive: true, force: true });
 	await mkdir(steamMount, { recursive: true });
 
 	console.log(
 		`== Steam prefetch: docker run --network=host app 600760 branch ${branch}`
 	);
+	const container = `stationeers-steam-prefetch-${process.pid}`;
 	const script = [
 		"set -eu",
 		"for attempt in 1 2 3 4 5; do",
+		"  rm -rf /home/steam/Steam/*",
 		`  if ./steamcmd.sh +force_install_dir ${installDir} +login anonymous +app_update 600760 -beta ${branch} validate +logoff +quit; then`,
 		"    exit 0",
 		"  fi",
@@ -269,18 +268,26 @@ async function prefetchStationeersSteamOnRunner({
 		"done",
 	].join("\n");
 
-	await shell("docker", [
-		"run",
-		"--rm",
-		"--network=host",
-		"--platform=linux/amd64",
-		"-v",
-		`${steamMount}:/home/steam/Steam`,
-		"kevinresol/base-dedicated-server:latest",
-		"bash",
-		"-lc",
-		script,
-	]);
+	try {
+		await shell("docker", [
+			"run",
+			"--name",
+			container,
+			"--network=host",
+			"--platform=linux/amd64",
+			"kevinresol/base-dedicated-server:latest",
+			"bash",
+			"-lc",
+			script,
+		]);
+		await shell("docker", [
+			"cp",
+			`${container}:/home/steam/Steam/.`,
+			steamMount,
+		]);
+	} finally {
+		await shell("docker", ["rm", "-f", container]);
+	}
 	console.log("== Steam prefetch: success");
 }
 
