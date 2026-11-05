@@ -260,7 +260,7 @@ async function prefetchStationeersSteamOnRunner({
 		"for attempt in 1 2 3 4 5; do",
 		"  rm -rf /home/steam/Steam/*",
 		`  ./steamcmd.sh +force_install_dir ${installDir} +login anonymous +app_update 600760 -beta ${branch} validate +logoff +quit || true`,
-		`  if [ -d "${installDir}" ] && [ -n "$(ls -A "${installDir}" 2>/dev/null || true)" ]; then`,
+		`  if [ -f /home/steam/Steam/steamapps/appmanifest_600760.acf ] || { [ -d "${installDir}" ] && ls -A "${installDir}" >/dev/null 2>&1; }; then`,
 		"    exit 0",
 		"  fi",
 		'  echo "steamcmd app_update failed (attempt $attempt), retrying..." >&2',
