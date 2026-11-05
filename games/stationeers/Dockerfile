@@ -1,57 +1,6 @@
-# Compile on the dedicated-server base image so the shim links the same
-# glibc the game runs. This stage is discarded; the runtime image has no compiler.
-FROM kevinresol/base-dedicated-server:latest AS shim-build
-
-USER root
-# debian.sources comments name the snapshot this image was built from.
-# Compile gcc/libc6-dev from trixie main at that snapshot only; updates and
-# security suites hit snapshot.debian.org harder and are not needed here.
-RUN python3 - <<'PY'
-from pathlib import Path
-import sys
-
-path = Path("/etc/apt/sources.list.d/debian.sources")
-snap = None
-for line in path.read_text().splitlines():
-    stripped = line.strip()
-    if stripped.startswith("# http://snapshot.debian.org/archive/debian/") and "debian-security" not in stripped:
-        snap = stripped[2:].strip()
-        break
-if not snap:
-    sys.stderr.write(
-        "ERROR: debian.sources is missing a Debian archive snapshot comment. "
-        "Refusing to compile against an unknown glibc.\n"
-    )
-    sys.exit(1)
-path.write_text(
-    "Types: deb\n"
-    f"URIs: {snap}\n"
-    "Suites: trixie\n"
-    "Components: main\n"
-    "Signed-By: /usr/share/keyrings/debian-archive-keyring.pgp\n"
-)
-PY
-RUN rm -f /etc/apt/sources.list.d/nodesource.sources \
-	&& for attempt in 1 2 3 4 5; do \
-		apt-get -o Acquire::Check-Valid-Until=false \
-			-o Acquire::Retries=3 \
-			update \
-		&& apt-get install -qqy --no-install-recommends gcc libc6-dev \
-		&& break; \
-		[ "$attempt" -eq 5 ] && exit 1; \
-		echo "apt install failed (attempt $attempt), retrying..." >&2; \
-		sleep $((attempt * 15)); \
-	done \
-	&& rm -rf /var/lib/apt/lists/*
-
-WORKDIR /src
-COPY shim/kernel32_shim.c shim/stn_pty.c /src/
-RUN mkdir /out \
-	&& gcc -shared -fPIC -O2 -Wall -Wextra -Werror -o /out/libkernel32-shim.so kernel32_shim.c \
-	&& gcc -Wall -Wextra -Werror -o /out/stn-pty stn_pty.c -lutil
-
-# Install stage matches the previous image through the Steam download so that
-# layer can be reused. GAME_LOG_FILE is intentionally not set on the runtime stage.
+# Native shims are built on kevinresol/base-dedicated-server (same glibc as the game)
+# and checked in under prebuilt/. Regenerate with shim/build-prebuilt.sh when the
+# base image snapshot or shim sources change.
 FROM kevinresol/base-dedicated-server:latest AS game
 
 ARG BRANCH=public
@@ -93,7 +42,7 @@ USER steam
 RUN mkdir -p /home/steam/shim
 
 COPY --from=game --chown=steam:steam /home/steam/Steam /home/steam/Steam
-COPY --from=shim-build --chown=steam:steam /out/libkernel32-shim.so /out/stn-pty /home/steam/shim/
+COPY --chown=steam:steam prebuilt/libkernel32-shim.so prebuilt/stn-pty /home/steam/shim/
 
 # Insert the S1 dllentry lines inside the existing kernel32 map, after the
 # four __Internal entries. A missing or reshaped block fails the build.
