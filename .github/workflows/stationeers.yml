@@ -16,7 +16,6 @@ permissions:
 
 jobs:
   build:
-    timeout-minutes: 90
     uses: ./.github/workflows/push.yml
     secrets: inherit
     with:
