@@ -19,7 +19,6 @@ RUN set -eu; \
 			+app_update 600760 -beta "${BRANCH}" validate \
 			+logoff +quit || true; \
 		if [ -f /home/steam/Steam/steamapps/appmanifest_600760.acf ]; then break; fi; \
-		if [ -d "${GAME_BIN_PATH}" ] && ls -A "${GAME_BIN_PATH}" >/dev/null 2>&1; then break; fi; \
 		echo "steamcmd app_update failed (attempt ${attempt}), retrying..." >&2; \
 		[ "${attempt}" -eq 5 ] && exit 1; \
 		sleep $((attempt * 30)); \
