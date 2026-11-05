@@ -4,39 +4,44 @@ FROM kevinresol/base-dedicated-server:latest AS shim-build
 
 USER root
 # debian.sources comments name the snapshot this image was built from.
-# Compile against that snapshot so apt does not upgrade glibc past the runtime.
+# Compile gcc/libc6-dev from trixie main at that snapshot only; updates and
+# security suites hit snapshot.debian.org harder and are not needed here.
 RUN python3 - <<'PY'
 from pathlib import Path
 import sys
 
 path = Path("/etc/apt/sources.list.d/debian.sources")
-lines = path.read_text().splitlines()
 snap = None
-replaced = 0
-out = []
-for line in lines:
+for line in path.read_text().splitlines():
     stripped = line.strip()
-    if stripped.startswith("# http://snapshot.debian.org/"):
+    if stripped.startswith("# http://snapshot.debian.org/archive/debian/") and "debian-security" not in stripped:
         snap = stripped[2:].strip()
-        out.append(line)
-        continue
-    if stripped.startswith("URIs: http://deb.debian.org/") and snap:
-        out.append("URIs: " + snap)
-        replaced += 1
-        snap = None
-        continue
-    out.append(line)
-if replaced != 2:
+        break
+if not snap:
     sys.stderr.write(
-        f"ERROR: expected to retarget 2 Debian apt URIs at the image snapshot, "
-        f"retargeted {replaced}. Refusing to compile against a different glibc.\n"
+        "ERROR: debian.sources is missing a Debian archive snapshot comment. "
+        "Refusing to compile against an unknown glibc.\n"
     )
     sys.exit(1)
-path.write_text("\n".join(out) + "\n")
+path.write_text(
+    "Types: deb\n"
+    f"URIs: {snap}\n"
+    "Suites: trixie\n"
+    "Components: main\n"
+    "Signed-By: /usr/share/keyrings/debian-archive-keyring.pgp\n"
+)
 PY
 RUN rm -f /etc/apt/sources.list.d/nodesource.sources \
-	&& apt-get -o Acquire::Check-Valid-Until=false update \
-	&& apt-get install -qqy --no-install-recommends gcc libc6-dev \
+	&& for attempt in 1 2 3 4 5; do \
+		apt-get -o Acquire::Check-Valid-Until=false \
+			-o Acquire::Retries=3 \
+			update \
+		&& apt-get install -qqy --no-install-recommends gcc libc6-dev \
+		&& break; \
+		[ "$attempt" -eq 5 ] && exit 1; \
+		echo "apt install failed (attempt $attempt), retrying..." >&2; \
+		sleep $((attempt * 15)); \
+	done \
 	&& rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
