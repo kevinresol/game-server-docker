@@ -4,18 +4,32 @@
 FROM kevinresol/base-dedicated-server:latest AS game
 
 ARG BRANCH=public
+ARG STEAM_PREFETCH=0
 
 # internal vars
 ENV GAME_BIN_PATH="/home/steam/Steam/steamapps/common/StationeersDedicatedServer"
 ENV GAME_DATA_PATH="/data"
 ENV GAME_LOG_FILE="/home/steam/stationeers.log"
 
-# install game
-RUN ./steamcmd.sh \
-	+force_install_dir ${GAME_BIN_PATH} \
-	+login anonymous \
-	+app_update 600760 -beta ${BRANCH} validate \
-	+logoff +quit
+COPY .ci-steam/ /tmp/ci-steam/
+
+# install game (CI prefetches via docker run on the host when BuildKit SteamCMD flakes)
+RUN set -eu; \
+	if [ "$STEAM_PREFETCH" = "1" ] && [ -d /tmp/ci-steam/Steam/steamapps ]; then \
+		mkdir -p /home/steam && cp -a /tmp/ci-steam/Steam /home/steam/; \
+	else \
+		for attempt in 1 2 3 4 5; do \
+			./steamcmd.sh \
+				+force_install_dir "${GAME_BIN_PATH}" \
+				+login anonymous \
+				+app_update 600760 -beta "${BRANCH}" validate \
+				+logoff +quit \
+			&& break; \
+			echo "steamcmd app_update failed (attempt ${attempt}), retrying..." >&2; \
+			[ "${attempt}" -eq 5 ] && exit 1; \
+			sleep $((attempt * 30)); \
+		done; \
+	fi
 
 RUN ln -sf "$GAME_DATA_PATH" "${GAME_BIN_PATH}/saves"
 
