@@ -245,10 +245,10 @@ async function prefetchStationeersSteamOnRunner({
 	context: string;
 	branch: string;
 }) {
-	const steamMount = path.join(context, ".ci-steam", "Steam");
+	const steamMount = path.resolve(context, ".ci-steam", "Steam");
 	const installDir =
 		"/home/steam/Steam/steamapps/common/StationeersDedicatedServer";
-	await rm(path.join(context, ".ci-steam", "Steam"), {
+	await rm(path.resolve(context, ".ci-steam", "Steam"), {
 		recursive: true,
 		force: true,
 	});
